@@ -1,0 +1,11 @@
+# Binary
+mimir
+
+# IDE / Editor
+.claude/
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
