@@ -104,6 +104,25 @@ var Editors = []Editor{
 		},
 	},
 	{
+		Name: "Antigravity",
+		ConfigPath: func() string {
+			home, _ := os.UserHomeDir()
+			if runtime.GOOS == "darwin" {
+				return filepath.Join(home, "Library", "Application Support", "Antigravity", "User", "settings.json")
+			}
+			return filepath.Join(home, ".config", "Antigravity", "User", "settings.json")
+		},
+		ConfigKey: "github.copilot.mcpServers",
+		Detect: func() bool {
+			if _, err := exec.LookPath("agy"); err == nil {
+				return true
+			}
+			home, _ := os.UserHomeDir()
+			_, err := os.Stat(filepath.Join(home, ".antigravity"))
+			return err == nil
+		},
+	},
+	{
 		Name: "Zed",
 		ConfigPath: func() string {
 			home, _ := os.UserHomeDir()

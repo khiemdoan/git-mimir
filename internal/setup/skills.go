@@ -13,6 +13,7 @@ var StaticSkills = map[string]string{
 	"debugging.md":      debuggingSkill,
 	"impact-analysis.md": impactSkill,
 	"refactoring.md":    refactoringSkill,
+	"antigravity.md":    antigravitySkill,
 }
 
 // InstallStaticSkills writes the 4 core mimir skills to .claude/skills/mimir/
@@ -230,4 +231,36 @@ mimir daemon start
 2. ` + "`rename(old, new, dry_run: true)`" + ` — preview all affected files
 3. Check ` + "`text_search_edits`" + ` (dynamic references, not in graph)
 4. Execute in order: deepest dependents first, then the symbol itself
+`
+
+const antigravitySkill = `---
+name: mimir-antigravity
+description: >
+  Mimir code intelligence for Antigravity editor.
+  Use when working in the Antigravity IDE to explore, debug, or refactor code
+  with graph-backed context. Antigravity uses github.copilot.mcpServers config.
+---
+
+## Prerequisite
+
+**Ensure the MCP daemon is running** before using these tools:
+` + "```bash" + `
+mimir daemon start
+` + "```" + `
+
+## Antigravity MCP config location
+
+Mimir configures itself at:
+` + "`~/Library/Application Support/Antigravity/User/settings.json`" + `
+
+Key: ` + "`github.copilot.mcpServers`" + `
+
+## Available tools
+
+- ` + "`query()`" + ` — semantic + BM25 search across the repo
+- ` + "`context(symbol)`" + ` — 360-degree view: callers, callees, cluster
+- ` + "`impact(symbol, direction)`" + ` — blast radius before editing
+- ` + "`detect_changes()`" + ` — pre-commit risk analysis
+- ` + "`rename(old, new)`" + ` — safe coordinated rename
+- ` + "`cypher(query)`" + ` — raw graph queries
 `
