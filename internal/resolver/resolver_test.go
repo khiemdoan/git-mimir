@@ -6,9 +6,9 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/yourusername/mimir/internal/graph"
-	"github.com/yourusername/mimir/internal/parser"
-	"github.com/yourusername/mimir/internal/resolver"
+	"github.com/thuongh2/git-mimir/internal/graph"
+	"github.com/thuongh2/git-mimir/internal/parser"
+	"github.com/thuongh2/git-mimir/internal/resolver"
 )
 
 func testdataPath(rel string) string {

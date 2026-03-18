@@ -3,7 +3,7 @@ package incremental_test
 import (
 	"testing"
 
-	"github.com/yourusername/mimir/internal/incremental"
+	"github.com/thuongh2/git-mimir/internal/incremental"
 )
 
 func TestPlanPatch(t *testing.T) {

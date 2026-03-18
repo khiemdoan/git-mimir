@@ -5,10 +5,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/yourusername/mimir/internal/graph"
-	"github.com/yourusername/mimir/internal/parser"
-	"github.com/yourusername/mimir/internal/store"
-	"github.com/yourusername/mimir/internal/walker"
+	"github.com/thuongh2/git-mimir/internal/graph"
+	"github.com/thuongh2/git-mimir/internal/parser"
+	"github.com/thuongh2/git-mimir/internal/store"
+	"github.com/thuongh2/git-mimir/internal/walker"
 )
 
 // PatchPlan describes what needs to be re-indexed.

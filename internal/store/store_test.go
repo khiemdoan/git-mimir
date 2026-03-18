@@ -3,8 +3,8 @@ package store_test
 import (
 	"testing"
 
-	"github.com/yourusername/mimir/internal/graph"
-	"github.com/yourusername/mimir/internal/store"
+	"github.com/thuongh2/git-mimir/internal/graph"
+	"github.com/thuongh2/git-mimir/internal/store"
 )
 
 func openTestStore(t *testing.T) *store.Store {

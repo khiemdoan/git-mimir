@@ -1,8 +1,9 @@
-module github.com/yourusername/mimir
+module github.com/thuongh2/git-mimir
 
 go 1.24.1
 
 require (
+	github.com/go-git/go-git/v5 v5.11.0
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
 	github.com/spf13/cobra v1.8.1
@@ -20,7 +21,6 @@ require (
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.5.0 // indirect
-	github.com/go-git/go-git/v5 v5.11.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect

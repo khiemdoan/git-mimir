@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/yourusername/mimir/internal/incremental"
-	"github.com/yourusername/mimir/internal/registry"
-	"github.com/yourusername/mimir/internal/store"
+	"github.com/thuongh2/git-mimir/internal/incremental"
+	"github.com/thuongh2/git-mimir/internal/registry"
+	"github.com/thuongh2/git-mimir/internal/store"
 )
 
 // Tools handles all 7 MCP tool calls.
@@ -80,6 +80,8 @@ func (t *Tools) Call(ctx context.Context, params json.RawMessage) Response {
 		return errResp(ErrInvalidParams, "invalid params: "+err.Error())
 	}
 
+	logToolCall(p.Name, "")
+
 	switch p.Name {
 	case "list_repos":
 		return t.listRepos(p.Arguments)
@@ -102,6 +104,7 @@ func (t *Tools) Call(ctx context.Context, params json.RawMessage) Response {
 
 func (t *Tools) listRepos(_ json.RawMessage) Response {
 	repos := t.reg.List()
+	logDebug("listRepos: found %d repos", len(repos))
 	return toolResult(map[string]interface{}{"repos": repos})
 }
 
@@ -115,8 +118,11 @@ func (t *Tools) query(ctx context.Context, args json.RawMessage) Response {
 		return errResp(ErrInvalidParams, err.Error())
 	}
 
+	logDebug("query: query=%q repo=%v limit=%v", input.Query, input.Repo, input.Limit)
+
 	s, err := t.openStore(input.Repo)
 	if err != nil {
+		logError("query.openStore", err)
 		return errResp(ErrInternal, err.Error())
 	}
 	defer s.Close()
@@ -129,9 +135,11 @@ func (t *Tools) query(ctx context.Context, args json.RawMessage) Response {
 	terms := tokenizeQuery(input.Query)
 	results, err := s.HybridSearch(terms, nil, limit)
 	if err != nil {
+		logError("query.HybridSearch", err)
 		return errResp(ErrInternal, err.Error())
 	}
 
+	logDebug("query: found %d results", len(results))
 	return toolResult(map[string]interface{}{
 		"definitions": results,
 		"query":       input.Query,
@@ -147,17 +155,22 @@ func (t *Tools) context(ctx context.Context, args json.RawMessage) Response {
 		return errResp(ErrInvalidParams, err.Error())
 	}
 
+	logDebug("context: name=%q repo=%v", input.Name, input.Repo)
+
 	s, err := t.openStore(input.Repo)
 	if err != nil {
+		logError("context.openStore", err)
 		return errResp(ErrInternal, err.Error())
 	}
 	defer s.Close()
 
 	nodes, err := s.QuerySymbol(input.Name)
 	if err != nil {
+		logError("context.QuerySymbol", err)
 		return errResp(ErrInternal, err.Error())
 	}
 	if len(nodes) == 0 {
+		logDebug("context: symbol not found: %s", input.Name)
 		return toolResult(map[string]interface{}{"symbol": nil, "message": "symbol not found"})
 	}
 
@@ -165,6 +178,7 @@ func (t *Tools) context(ctx context.Context, args json.RawMessage) Response {
 	outEdges, _ := s.QueryEdgesFrom(node.UID)
 	inEdges, _ := s.QueryEdgesTo(node.UID)
 
+	logDebug("context: found %d outgoing edges, %d incoming edges", len(outEdges), len(inEdges))
 	return toolResult(map[string]interface{}{
 		"symbol":   node,
 		"outgoing": outEdges,
@@ -184,8 +198,11 @@ func (t *Tools) impact(ctx context.Context, args json.RawMessage) Response {
 		return errResp(ErrInvalidParams, err.Error())
 	}
 
+	logDebug("impact: target=%q direction=%q minConf=%v maxDepth=%v", input.Target, input.Direction, input.MinConfidence, input.MaxDepth)
+
 	s, err := t.openStore(input.Repo)
 	if err != nil {
+		logError("impact.openStore", err)
 		return errResp(ErrInternal, err.Error())
 	}
 	defer s.Close()
@@ -206,18 +223,22 @@ func (t *Tools) impact(ctx context.Context, args json.RawMessage) Response {
 	// Find the target node
 	nodes, err := s.QuerySymbol(input.Target)
 	if err != nil {
+		logError("impact.QuerySymbol", err)
 		return errResp(ErrInternal, err.Error())
 	}
 	if len(nodes) == 0 {
+		logDebug("impact: target not found: %s", input.Target)
 		return toolResult(map[string]interface{}{"target": nil, "message": "symbol not found"})
 	}
 
 	target := nodes[0]
 	rows, err := s.QueryImpact(target.UID, direction, minConf, maxDepth)
 	if err != nil {
+		logError("impact.QueryImpact", err)
 		return errResp(ErrInternal, err.Error())
 	}
 
+	logDebug("impact: found %d affected nodes", len(rows))
 	return toolResult(map[string]interface{}{
 		"target":    target,
 		"direction": direction,
@@ -234,14 +255,18 @@ func (t *Tools) detectChanges(ctx context.Context, args json.RawMessage) Respons
 		return errResp(ErrInvalidParams, err.Error())
 	}
 
+	logDebug("detectChanges: scope=%v repo=%v", input.Scope, input.Repo)
+
 	repoName := t.resolveRepoName(input.Repo)
 	repoInfo := t.reg.Get(repoName)
 	if repoInfo == nil {
+		logError("detectChanges.repo", fmt.Errorf("repo not found: %s", repoName))
 		return errResp(ErrInternal, "repo not found: "+repoName)
 	}
 
 	s, err := t.openStore(input.Repo)
 	if err != nil {
+		logError("detectChanges.openStore", err)
 		return errResp(ErrInternal, err.Error())
 	}
 	defer s.Close()
@@ -249,9 +274,11 @@ func (t *Tools) detectChanges(ctx context.Context, args json.RawMessage) Respons
 	lastCommit, _ := s.GetMeta("last_commit")
 	changed, err := incremental.GetChangedFiles(repoInfo.Path, lastCommit)
 	if err != nil {
+		logError("detectChanges.GetChangedFiles", err)
 		return errResp(ErrInternal, err.Error())
 	}
 
+	logDebug("detectChanges: %d changed files", len(changed))
 	return toolResult(map[string]interface{}{
 		"changed_files": changed,
 		"total":         len(changed),
@@ -269,14 +296,18 @@ func (t *Tools) rename(ctx context.Context, args json.RawMessage) Response {
 		return errResp(ErrInvalidParams, err.Error())
 	}
 
+	logDebug("rename: symbol=%q newName=%q dryRun=%v", input.SymbolName, input.NewName, input.DryRun)
+
 	s, err := t.openStore(input.Repo)
 	if err != nil {
+		logError("rename.openStore", err)
 		return errResp(ErrInternal, err.Error())
 	}
 	defer s.Close()
 
 	nodes, err := s.QuerySymbol(input.SymbolName)
 	if err != nil {
+		logError("rename.QuerySymbol", err)
 		return errResp(ErrInternal, err.Error())
 	}
 
@@ -295,11 +326,12 @@ func (t *Tools) rename(ctx context.Context, args json.RawMessage) Response {
 		})
 	}
 
+	logDebug("rename: %d files affected", len(nodes))
 	return toolResult(map[string]interface{}{
-		"status":        "planned",
-		"dry_run":       dryRun,
+		"status":         "planned",
+		"dry_run":        dryRun,
 		"files_affected": len(nodes),
-		"changes":       changes,
+		"changes":        changes,
 	})
 }
 
@@ -312,14 +344,18 @@ func (t *Tools) cypher(ctx context.Context, args json.RawMessage) Response {
 		return errResp(ErrInvalidParams, err.Error())
 	}
 
+	logDebug("cypher: query=%q repo=%v", input.Query, input.Repo)
+
 	s, err := t.openStore(input.Repo)
 	if err != nil {
+		logError("cypher.openStore", err)
 		return errResp(ErrInternal, err.Error())
 	}
 	defer s.Close()
 
 	sqlQuery, err := translateCypher(input.Query)
 	if err != nil {
+		logError("cypher.translateCypher", err)
 		return toolResult(map[string]interface{}{
 			"error": fmt.Sprintf("Unsupported Cypher: %s. Use SQL instead.", err.Error()),
 		})
@@ -327,8 +363,11 @@ func (t *Tools) cypher(ctx context.Context, args json.RawMessage) Response {
 
 	rows, columns, err := runRawQuery(s, sqlQuery)
 	if err != nil {
+		logError("cypher.runRawQuery", err)
 		return errResp(ErrInternal, err.Error())
 	}
+
+	logDebug("cypher: returned %d rows, %d columns", len(rows), len(columns))
 
 	return toolResult(map[string]interface{}{
 		"columns": columns,

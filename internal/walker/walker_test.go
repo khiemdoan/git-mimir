@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/yourusername/mimir/internal/walker"
+	"github.com/thuongh2/git-mimir/internal/walker"
 )
 
 func TestWalkRepo_CountsFiles(t *testing.T) {

@@ -6,13 +6,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
-	"github.com/yourusername/mimir/internal/registry"
+	"github.com/thuongh2/git-mimir/internal/registry"
 )
+
+func init() {
+	initLogger()
+}
 
 // JSON-RPC 2.0 message types
 type Request struct {
@@ -77,15 +81,20 @@ func (s *Server) run(ctx context.Context, r io.Reader) error {
 	for {
 		select {
 		case <-ctx.Done():
+			logger.Printf("MCP server shutting down: context done")
 			return nil
 		default:
 		}
 
 		if !scanner.Scan() {
 			if err := scanner.Err(); err != nil {
+				logger.Printf("Scanner error: %v", err)
 				return err
 			}
-			return nil // EOF
+			// EOF - keep waiting for more input (daemon mode)
+			// Sleep briefly to avoid busy-waiting
+			time.Sleep(100 * time.Millisecond)
+			continue
 		}
 
 		line := scanner.Bytes()
@@ -95,21 +104,35 @@ func (s *Server) run(ctx context.Context, r io.Reader) error {
 
 		var req Request
 		if err := json.Unmarshal(line, &req); err != nil {
+			logger.Printf("Parse error: %v, line: %s", err, string(line))
 			s.sendError(nil, ErrParseError, "Parse error: "+err.Error())
 			continue
 		}
 
 		// Notification (no id) — handle but don't respond
 		if req.ID == nil {
+			logger.Printf("NOTIF method=%s", req.Method)
 			s.handleNotification(ctx, &req)
 			continue
 		}
 
+		logRequest(req.Method, req.ID)
+		startTime := time.Now()
 		resp := s.handleRequest(ctx, &req)
+		elapsed := time.Since(startTime)
+
 		resp.JSONRPC = "2.0"
 		resp.ID = req.ID
+
+		hasError := resp.Error != nil
+		if hasError {
+			logger.Printf("ERR method=%s id=%s time=%v error=%s", req.Method, string(*req.ID), elapsed, resp.Error.Message)
+		} else {
+			logger.Printf("OK method=%s id=%s time=%v", req.Method, string(*req.ID), elapsed)
+		}
+
 		if err := s.encoder.Encode(resp); err != nil {
-			log.Printf("mcp: encode response: %v", err)
+			logger.Printf("encode response: %v", err)
 		}
 	}
 }

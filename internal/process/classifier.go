@@ -1,7 +1,7 @@
 package process
 
 import (
-	"github.com/yourusername/mimir/internal/store"
+	"github.com/thuongh2/git-mimir/internal/store"
 )
 
 // ClassifyProcess determines the process type based on cluster membership.

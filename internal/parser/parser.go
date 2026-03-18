@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
-	"github.com/yourusername/mimir/internal/graph"
+	"github.com/thuongh2/git-mimir/internal/graph"
 )
 
 // treeParser wraps a pre-allocated tree-sitter parser for one language.

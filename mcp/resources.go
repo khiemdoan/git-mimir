@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/yourusername/mimir/internal/registry"
-	"github.com/yourusername/mimir/internal/store"
+	"github.com/thuongh2/git-mimir/internal/registry"
+	"github.com/thuongh2/git-mimir/internal/store"
 )
 
 // ResourceDefinition describes one MCP resource.
@@ -64,7 +64,7 @@ func readResource(ctx context.Context, params json.RawMessage, reg *registry.Reg
 	uri := p.URI
 
 	if uri == "mimir://repos" {
-		return toolResult(map[string]interface{}{"repos": reg.List()})
+		return resourceResult(uri, "application/json", map[string]interface{}{"repos": reg.List()})
 	}
 
 	// Parse mimir://repo/{name}/... URIs
@@ -85,9 +85,15 @@ func readResource(ctx context.Context, params json.RawMessage, reg *registry.Reg
 
 	switch subPath {
 	case "context":
-		nodeCount, _ := s.NodeCount()
-		edgeCount, _ := s.EdgeCount()
-		return toolResult(map[string]interface{}{
+		nodeCount, err := s.NodeCount()
+		if err != nil {
+			return errResp(ErrInternal, "failed to get node count: "+err.Error())
+		}
+		edgeCount, err := s.EdgeCount()
+		if err != nil {
+			return errResp(ErrInternal, "failed to get edge count: "+err.Error())
+		}
+		return resourceResult(uri, "application/json", map[string]interface{}{
 			"repo":       repoName,
 			"node_count": nodeCount,
 			"edge_count": edgeCount,
@@ -98,18 +104,18 @@ func readResource(ctx context.Context, params json.RawMessage, reg *registry.Reg
 		if err != nil {
 			return errResp(ErrInternal, err.Error())
 		}
-		return toolResult(map[string]interface{}{"clusters": clusters})
+		return resourceResult(uri, "application/json", map[string]interface{}{"clusters": clusters})
 
 	case "processes":
 		processes, err := s.AllProcesses()
 		if err != nil {
 			return errResp(ErrInternal, err.Error())
 		}
-		return toolResult(map[string]interface{}{"processes": processes})
+		return resourceResult(uri, "application/json", map[string]interface{}{"processes": processes})
 
 	case "schema":
-		return toolResult(map[string]interface{}{
-			"tables": []string{"nodes", "edges", "clusters", "cluster_members", "processes", "process_steps", "bm25_index", "embed_cache", "index_meta"},
+		return resourceResult(uri, "application/json", map[string]interface{}{
+			"tables":     []string{"nodes", "edges", "clusters", "cluster_members", "processes", "process_steps", "bm25_index", "embed_cache", "index_meta"},
 			"node_kinds": []string{"Function", "Method", "Class", "Interface", "Variable", "Constant", "Type"},
 			"edge_types": []string{"CALLS", "IMPORTS", "EXTENDS", "IMPLEMENTS", "MEMBER_OF"},
 		})
@@ -124,7 +130,7 @@ func readResource(ctx context.Context, params json.RawMessage, reg *registry.Reg
 		}
 		for _, c := range clusters {
 			if c.ID == clusterID {
-				return toolResult(c)
+				return resourceResult(uri, "application/json", c)
 			}
 		}
 		return errResp(ErrInvalidParams, "cluster not found: "+clusterID)
@@ -138,13 +144,31 @@ func readResource(ctx context.Context, params json.RawMessage, reg *registry.Reg
 		}
 		for _, p := range processes {
 			if p.ID == processID {
-				return toolResult(p)
+				return resourceResult(uri, "application/json", p)
 			}
 		}
 		return errResp(ErrInvalidParams, "process not found: "+processID)
 	}
 
 	return errResp(ErrInvalidParams, "unknown resource: "+uri)
+}
+
+func resourceResult(uri, mimeType string, data interface{}) Response {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return errResp(ErrInternal, "failed to marshal resource data: "+err.Error())
+	}
+	return Response{
+		Result: map[string]interface{}{
+			"contents": []map[string]interface{}{
+				{
+					"uri":      uri,
+					"mimeType": mimeType,
+					"text":     string(b),
+				},
+			},
+		},
+	}
 }
 
 // parseResourceURI parses "mimir://repo/{name}/{path}" → (name, path)

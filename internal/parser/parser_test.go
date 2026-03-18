@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/yourusername/mimir/internal/parser"
+	"github.com/thuongh2/git-mimir/internal/parser"
 )
 
 func testdataPath(rel string) string {

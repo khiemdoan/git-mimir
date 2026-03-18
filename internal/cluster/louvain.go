@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yourusername/mimir/internal/graph"
+	"github.com/thuongh2/git-mimir/internal/graph"
 )
 
 // Graph is the undirected weighted graph for Louvain clustering.

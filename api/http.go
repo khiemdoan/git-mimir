@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/yourusername/mimir/internal/registry"
-	"github.com/yourusername/mimir/internal/store"
+	"github.com/thuongh2/git-mimir/internal/registry"
+	"github.com/thuongh2/git-mimir/internal/store"
 )
 
 const defaultPort = 7842

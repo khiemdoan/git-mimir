@@ -6,7 +6,7 @@ import (
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/yourusername/mimir/internal/parser"
+	"github.com/thuongh2/git-mimir/internal/parser"
 )
 
 // ChangeStatus represents the status of a changed file.

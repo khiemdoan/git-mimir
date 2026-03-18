@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/yourusername/mimir/internal/graph"
+	"github.com/thuongh2/git-mimir/internal/graph"
 )
 
 // IndexNodesBM25 builds TF-IDF index entries for a batch of nodes.

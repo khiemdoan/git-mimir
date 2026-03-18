@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/yourusername/mimir/internal/store"
+	"github.com/thuongh2/git-mimir/internal/store"
 )
 
 const (

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yourusername/mimir/internal/graph"
-	"github.com/yourusername/mimir/internal/store"
+	"github.com/thuongh2/git-mimir/internal/graph"
+	"github.com/thuongh2/git-mimir/internal/store"
 )
 
 // Process represents an execution flow starting from an entry point.

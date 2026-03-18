@@ -1,126 +1,98 @@
-# Mimir — The Well of Code Intelligence
+# Mimir — Code Intelligence for AI Agents
 
-Mimir is a **Go-based code intelligence engine** that indexes any repository into a knowledge graph and exposes it via MCP tools, HTTP API, and an interactive web UI. It is a ground-up rewrite of [GitNexus](https://github.com/) (Node.js) with a fundamentally better algorithm stack.
+Mimir is a **Go-based code intelligence engine** that indexes your repository into a knowledge graph and exposes it to AI agents via MCP, HTTP API, and an interactive web UI.
 
-```
+```bash
+# 1. Install
+go install github.com/thuongh2/git-mimir/cmd/mimir@latest
+
+# 2. Index your code
 mimir analyze ./my-project
+
+# 3. Connect to Claude Code or open Web UI
 mimir serve
-# Open http://localhost:7842 → interactive force-directed graph
+# http://localhost:7842
 ```
 
 ---
 
-## Why Mimir over GitNexus?
+## What is Mimir?
 
-### Performance
+Mimir builds a searchable knowledge graph of your codebase that helps AI agents (and humans) understand it faster.
+
+| Use Case | How Mimir Helps |
+|---|---|
+| **AI Agents (MCP)** | 7 tools for semantic search, impact analysis, and blast radius queries |
+| **Humans (Web UI)** | Interactive force-directed graph to explore code structure visually |
+| **Teams (Refactors)** | Impact analysis before editing — see what breaking changes affect |
+
+### Why Mimir?
 
 | Metric | GitNexus (Node.js) | Mimir (Go) |
 |---|---|---|
-| Cold index 1,000-file TS repo | ~45s | **< 8s** |
-| Incremental re-index (10 files) | ~45s (full re-index) | **< 2s** |
+| Cold index (1,000 files) | ~45s | **< 8s** |
+| Incremental re-index | ~45s (full) | **< 2s** |
 | Hybrid search latency | ~300ms | **< 80ms** |
-| MCP tool cold start | ~2s (npm startup) | **< 80ms** |
-| Binary size | 350 MB (node_modules) | **< 20 MB** |
-| RAM during index (1,000 files) | ~800 MB | **< 120 MB** |
+| Binary size | 350 MB | **< 20 MB** |
+| RAM during index | ~800 MB | **< 120 MB** |
 
-### Architecture Improvements
-
-| Area | GitNexus | Mimir |
-|---|---|---|
-| Parsing | Worker threads, single-lang | **Goroutine pool, 8 languages** (TS, JS, Go, Python, Rust, Java, C, C++) |
-| Resolution | Regex-based fallback | **Full AST scope-aware resolver** — two-pass parallel resolution |
-| Incremental indexing | None (full re-index) | **Git-diff patch planner** — only re-parses changed files |
-| Storage | SQLite + Node bindings (CGO) | **Pure Go SQLite** (modernc.org) — zero CGO, single static binary |
-| Vector search | External dependency | **sqlite-vec** — HNSW cosine embedded in binary |
-| Text search | Basic FTS | **BM25 with camelCase-aware tokenization** |
-| Clustering | Basic grouping | **Louvain community detection** on call graph |
-| Process tracing | Manual | **Automatic entry point detection** with BFS flow tracing |
-| Deployment | `npm install` + native deps | **Single binary**, zero dependencies |
-| Web UI | Separate Vercel app | **Embedded in binary** — `mimir serve` does everything |
-
----
-
-## Features
-
-- **Knowledge Graph** — Functions, classes, methods, interfaces, variables, and types as nodes; CALLS, IMPORTS, EXTENDS, IMPLEMENTS, MEMBER_OF as edges
-- **8-Language Support** — TypeScript, JavaScript, Go, Python, Rust, Java, C, C++
-- **Hybrid Search** — BM25 text + vector embeddings + Reciprocal Rank Fusion
-- **Impact Analysis** — Recursive upstream/downstream blast radius queries
-- **Louvain Clustering** — Automatic module detection via community detection on call graphs
-- **Process Tracing** — Heuristic entry point detection with BFS execution flow mapping
-- **Incremental Indexing** — Git-diff based; only re-parses changed files
-- **MCP Server** — 7 tools, 7 resources, 2 prompts via stdio JSON-RPC 2.0
-- **HTTP API** — RESTful endpoints for graph, search, clusters, processes, impact
-- **Interactive Web UI** — Force-directed graph visualization with Sigma.js (embedded, no build step)
-
----
-
-## Installation
-
-### From Source
-
-```bash
-git clone https://github.com/yourusername/mimir.git
-cd mimir
-go build -o mimir ./cmd/mimir
-```
-
-The result is a single static binary with zero external dependencies.
+**Key improvements:** Pure Go (zero CGO), 8-language support (TS, JS, Go, Python, Rust, Java, C, C++), incremental indexing via git-diff, Louvain community detection, embedded web UI.
 
 ---
 
 ## Quick Start
 
-### 1. Index a Repository
+### Step 1: Install
 
 ```bash
-# Index with full features (requires ollama or OpenAI for embeddings)
-mimir analyze /path/to/your/project
+# One-line (Linux/macOS)
+curl -fsSL https://raw.githubusercontent.com/thuongh2/git-mimir/main/install.sh | sh
 
-# Index without embeddings (faster, graph + BM25 search only)
-mimir analyze --skip-embeddings /path/to/your/project
+# Or via Go
+go install github.com/thuongh2/git-mimir/cmd/mimir@latest
+
+# Or download binary from GitHub Releases
 ```
 
-### 2. Explore via Web UI
+### Step 2: Index Your Code
 
+```bash
+# Full index with embeddings (requires ollama or OpenAI)
+mimir analyze /path/to/your-project
+
+# Faster — graph + BM25 only (no embeddings)
+mimir analyze --skip-embeddings /path/to/your-project
+
+# Skip auto-setup for manual control
+mimir analyze --skip-daemon --skip-hooks --skip-skills /path/to/your-project
+```
+
+### Step 3: Use It
+
+**Option A: Web UI (Humans)**
 ```bash
 mimir serve
 # Open http://localhost:7842
 ```
 
-The web UI provides:
-- **Force-directed graph** — nodes colored by kind, sized by connection count
-- **Search** — fuzzy filter to highlight matching symbols
-- **Click-to-inspect** — detail panel with incoming/outgoing edges
-- **Hover highlighting** — dims unrelated nodes, shows direct connections
-- **Repo selector** — switch between indexed repositories
-- **Zoom controls** — fit, zoom in/out
-
-### 3. Use with AI Agents (MCP)
-
+**Option B: MCP (AI Agents)**
 ```bash
-# Start the MCP stdio server
-mimir mcp
+mimir daemon start    # Start background MCP server
+mimir setup           # Auto-configure Claude Code, VS Code, Cursor, etc.
 ```
 
-Or configure in your editor's MCP settings:
+---
 
-```json
-{
-  "mcpServers": {
-    "mimir": {
-      "command": "mimir",
-      "args": ["mcp"]
-    }
-  }
-}
-```
+## Installation
 
-**Auto-setup** for supported editors:
+| Method | Command |
+|---|---|
+| **One-line (Linux/macOS)** | `curl -fsSL https://raw.githubusercontent.com/thuongh2/git-mimir/main/install.sh | sh` |
+| **Go Install** | `go install github.com/thuongh2/git-mimir/cmd/mimir@latest` |
+| **Download Binary** | [GitHub Releases](https://github.com/thuongh2/git-mimir/releases) |
+| **From Source** | `git clone && cd git-mimir && make build` |
 
-```bash
-mimir setup
-```
+For detailed installation guide, see [docs/installation.md](docs/installation.md).
 
 ---
 
@@ -128,27 +100,72 @@ mimir setup
 
 | Command | Description |
 |---|---|
-| `mimir analyze <path>` | Index a repository into the knowledge graph |
-| `mimir serve` | Start the HTTP server + web UI (default: port 7842) |
-| `mimir mcp` | Start the MCP stdio server for AI agent integration |
-| `mimir list` | List all indexed repositories |
-| `mimir status [name]` | Show index status for a repository |
-| `mimir clean <name>` | Remove the index for a repository |
-| `mimir setup` | Configure MCP settings in supported editors |
-| `mimir wiki [name]` | Generate a wiki from the knowledge graph |
+| `mimir analyze <path>` | Index repository with auto-setup |
+| `mimir serve` | Start HTTP server + Web UI (default: port 7842) |
+| `mimir mcp` | Start MCP stdio server |
+| `mimir daemon start/stop/status` | Manage background MCP daemon |
+| `mimir daemon logs [lines]` | View daemon logs (default: 30 lines) |
+| `mimir list` | List indexed repositories |
+| `mimir status [name]` | Show index status |
+| `mimir clean <name>` | Remove index for a repository |
+| `mimir setup` | Configure MCP in all supported editors |
+| `mimir wiki [name]` | Generate wiki from knowledge graph |
 
-### Flags
+### Analyze Flags
 
 ```bash
-mimir analyze --skip-embeddings <path>   # Skip embedding generation
-mimir serve --port 8080                  # Custom port (default: 7842)
+mimir analyze --skip-embeddings <path>   # Skip embeddings (faster)
+mimir analyze --skip-daemon <path>       # Don't start MCP daemon
+mimir analyze --skip-hooks <path>        # Don't install Claude Code hooks
+mimir analyze --skip-skills <path>       # Don't install agent skills
+mimir analyze --force <path>             # Force full re-index
+mimir analyze --incremental <path>       # Force incremental mode
+mimir analyze --hint <file> <path>       # Hint for faster patch planning
 ```
 
 ---
 
-## HTTP API
+## MCP Tools
 
-All endpoints available at `http://localhost:7842`:
+AI agents get access to 7 tools via MCP:
+
+| Tool | Description | Example |
+|---|---|---|
+| `query` | Hybrid search (BM25 + vector) | "Find all auth-related processes" |
+| `context` | 360-degree symbol view | "Show handleRequest definition and callers" |
+| `impact` | Blast radius analysis | "What breaks if I change UserService?" |
+| `detect_changes` | Analyze uncommitted git changes | "What processes did my commit affect?" |
+| `rename` | Plan coordinated multi-file rename | "Rename AuthController to SessionController" |
+| `cypher` | Raw graph queries | "Find unused exported functions" |
+| `list_repos` | List indexed repositories | — |
+
+### Recommended Workflow
+
+1. **Discovery**: Use `query()` for semantic search
+2. **Deep Dive**: Use `context()` to understand a symbol
+3. **Before Editing**: Always run `impact()` first
+
+For detailed usage, see [docs/guide.md](docs/guide.md).
+
+---
+
+## Auto-Analyze Features
+
+Running `mimir analyze` automatically sets up:
+
+1. **MCP Daemon** — Background server for persistent MCP availability
+2. **Editor Config** — Auto-configures Claude Code, VS Code, Cursor, Windsurf, Zed, OpenCode
+3. **Claude Code Hooks** — Pre-search (graph-augmented search) and post-write (auto re-index)
+4. **Agent Skills** — 4 static methodology skills + dynamic module skills per cluster
+5. **Context Files** — AGENTS.md and CLAUDE.md with live index statistics
+
+**Log location:** `~/.mimir/mimir-mcp.log`
+
+For complete feature documentation, see [docs/features.md](docs/features.md).
+
+---
+
+## HTTP API
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -164,66 +181,30 @@ All endpoints available at `http://localhost:7842`:
 
 ---
 
-## MCP Tools
+## Documentation
 
-When connected via MCP, AI agents get access to 7 tools:
-
-| Tool | Description |
+| Guide | Description |
 |---|---|
-| `query` | Hybrid search over the code knowledge graph |
-| `context` | 360-degree view of a symbol: definition, edges, processes |
-| `impact` | Blast radius analysis: what does changing this symbol break? |
-| `detect_changes` | Detect uncommitted/recent git changes and their impact |
-| `rename` | Plan a coordinated multi-file rename |
-| `cypher` | Execute raw graph queries |
-| `reindex` | Trigger incremental re-indexing |
-
----
-
-## Web UI Screenshots
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ MIMIR  [Repo v]  [Search...]             42 nodes  67 edges │
-├───────────────────────────────────┬─────────────────────┤
-│                                   │ handleRequest       │
-│     ● ──── ●                      │ Kind: Function      │
-│    / \      \                     │ File: src/server.ts  │
-│   ●   ●     ● ── ●               │ Lines: 45-82        │
-│    \   \   /                      │ Cluster: api/server  │
-│     ●   ● ●                       │                     │
-│      \   |                        │ Incoming:           │
-│       ●  ●                        │  main → CALLS      │
-│                                   │  router → CALLS    │
-│   Force-directed graph            │                     │
-│   (Sigma.js canvas)               │ Outgoing:           │
-│                                   │  validate → CALLS  │
-│                                   │  respond → CALLS   │
-├───────────────────────────────────┴─────────────────────┤
-│ [Fit] [+] [-]  ● Func  ● Class  ● Method  ● Interface  │
-└─────────────────────────────────────────────────────────┘
-```
-
-**Node colors:** Function (blue), Class (green), Method (cyan), Interface (purple), Variable (orange), Type (gray)
-
-**Edge colors:** CALLS (gray), IMPORTS (blue), EXTENDS (green), IMPLEMENTS (purple), MEMBER_OF (orange)
+| [Installation](docs/installation.md) | Detailed installation and setup |
+| [Usage Guide](docs/guide.md) | Perfect workflow for daily use |
+| [Features](docs/features.md) | Complete feature reference |
+| [Architecture](docs/architecture.md) | System design and components |
+| [Algorithms](docs/algorithms.md) | Louvain, BM25, HNSW details |
 
 ---
 
 ## Tech Stack
 
-| Concern | Choice |
+| Component | Technology |
 |---|---|
 | Language | Go 1.22+ |
 | AST Parsing | smacker/go-tree-sitter |
-| Storage | modernc.org/sqlite (pure Go, zero CGO) |
-| Vector Search | sqlite-vec (HNSW cosine) |
-| Text Search | Custom BM25 inverted index |
-| Community Detection | Louvain algorithm (pure Go) |
-| MCP Transport | stdio JSON-RPC 2.0 |
+| Storage | modernc.org/sqlite (pure Go) |
+| Vector Search | sqlite-vec (HNSW) |
+| Text Search | Custom BM25 |
+| Clustering | Louvain algorithm |
 | CLI | cobra |
-| Git Operations | go-git/go-git |
-| Graph Visualization | Sigma.js v2 + Graphology |
+| Web UI | Sigma.js v2 + Graphology |
 
 ---
 
@@ -231,25 +212,27 @@ When connected via MCP, AI agents get access to 7 tools:
 
 ```
 mimir/
-├── cmd/mimir/          # CLI entrypoint (cobra commands)
-├── api/                # HTTP server + embedded web UI
-├── mcp/                # MCP stdio server (tools, resources, prompts)
+├── cmd/mimir/          # CLI entrypoint
+├── api/                # HTTP server + embedded Web UI
+├── mcp/                # MCP stdio server
 ├── internal/
-│   ├── walker/         # Parallel file tree walker with .gitignore
-│   ├── parser/         # Tree-sitter AST parser (8 languages)
-│   ├── resolver/       # Scope-aware import/call resolver
-│   ├── graph/          # Node/edge type definitions
-│   ├── store/          # SQLite storage layer
-│   ├── embedder/       # Async batched embedding pipeline
-│   ├── cluster/        # Louvain community detection
-│   ├── process/        # Execution flow tracer
-│   ├── incremental/    # Git-diff based incremental indexing
-│   └── registry/       # Multi-repo registry (~/.mimir)
+│   ├── walker/         # File tree walker
+│   ├── parser/         # AST parser (8 languages)
+│   ├── resolver/       # Import/call resolver
+│   ├── graph/          # Node/edge types
+│   ├── store/          # SQLite layer
+│   ├── embedder/       # Embedding pipeline
+│   ├── cluster/        # Louvain detection
+│   ├── process/        # Flow tracer
+│   ├── incremental/    # Git-diff indexing
+│   └── registry/       # Multi-repo registry
 └── testdata/           # Test fixtures
 ```
 
 ---
 
-## License
+## Contributing
 
-MIT
+Contributions welcome! See [GitHub Issues](https://github.com/thuongh2/git-mimir/issues) for open tasks.
+
+**License:** MIT

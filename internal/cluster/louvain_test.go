@@ -3,8 +3,8 @@ package cluster_test
 import (
 	"testing"
 
-	"github.com/yourusername/mimir/internal/cluster"
-	"github.com/yourusername/mimir/internal/graph"
+	"github.com/thuongh2/git-mimir/internal/cluster"
+	"github.com/thuongh2/git-mimir/internal/graph"
 )
 
 func TestLouvain_EmptyGraph(t *testing.T) {

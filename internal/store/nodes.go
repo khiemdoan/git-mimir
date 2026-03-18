@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/yourusername/mimir/internal/graph"
+	"github.com/thuongh2/git-mimir/internal/graph"
 )
 
 // BatchUpsertNodes inserts or updates nodes in a single transaction.

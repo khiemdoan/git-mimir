@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/yourusername/mimir/internal/registry"
-	"github.com/yourusername/mimir/mcp"
+	"github.com/thuongh2/git-mimir/internal/registry"
+	"github.com/thuongh2/git-mimir/mcp"
 )
 
 func TestTools_ListTools(t *testing.T) {

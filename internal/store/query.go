@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yourusername/mimir/internal/graph"
+	"github.com/thuongh2/git-mimir/internal/graph"
 )
 
 // ImpactRow is one row from an impact query.

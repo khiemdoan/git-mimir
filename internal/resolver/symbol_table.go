@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/yourusername/mimir/internal/graph"
+	"github.com/thuongh2/git-mimir/internal/graph"
 )
 
 // Candidate is a potential resolution target.

@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	gogit "github.com/go-git/go-git/v5"
-	"github.com/yourusername/mimir/internal/store"
+	"github.com/thuongh2/git-mimir/internal/store"
 )
 
 // IsStale checks whether the index is out of date with the repo's HEAD.

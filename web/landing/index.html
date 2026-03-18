@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mimir — Open-source orchestration for zero-human companies</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Background layer (Fixed) -->
+    <div class="artistic-background">
+        <div class="sky-top"></div>
+        <div class="sea">
+            <div class="birds-container">
+                <svg class="bird bird-1" viewBox="0 0 100 60"><path d="M5,45 C15,25 35,25 50,40 C65,25 85,25 95,45" fill="none" stroke="#ff80bf" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <svg class="bird bird-2" viewBox="0 0 100 60"><path d="M10,40 C20,20 40,20 50,35 C60,20 80,20 90,40" fill="none" stroke="#ff80bf" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <svg class="bird bird-3" viewBox="0 0 100 60"><path d="M5,50 C15,30 35,30 50,45 C65,30 85,30 95,50" fill="none" stroke="#ff80bf" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <svg class="bird bird-4" viewBox="0 0 100 60"><path d="M10,40 C20,20 40,20 50,35 C60,20 80,20 90,40" fill="none" stroke="#ff80bf" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <svg class="bird bird-5" viewBox="0 0 100 60"><path d="M5,45 C15,25 35,25 50,40 C65,25 85,25 95,45" fill="none" stroke="#ff80bf" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <svg class="bird bird-6" viewBox="0 0 100 60"><path d="M10,40 C20,20 40,20 50,35 C60,20 80,20 90,40" fill="none" stroke="#ff80bf" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+        </div>
+        <div class="land"></div>
+        <div class="gradient-fade"></div>
+    </div>
+
+    <!-- Navigation -->
+    <header class="header-nav">
+        <nav class="pill-nav">
+            <a href="#">Docs</a>
+            <a href="#">GitHub</a>
+            <div class="logo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="paperclip-icon">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                </svg>
+                <span>Mimir</span>
+            </div>
+            <a href="#" class="star-btn">
+                <svg viewBox="0 0 24 24" fill="currentColor" class="star-icon">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                </svg>
+                Star
+            </a>
+        </nav>
+    </header>
+
+    <!-- Foreground Content -->
+    <main class="scrolling-content">
+        <section class="hero-section">
+            <div class="hero-text-block">
+                <h1>Mimir</h1>
+                <p class="subtitle">Open-source orchestration <br>for zero-human companies</p>
+                <p class="tagline">Hire AI employees, set goals, automate jobs and <br>your business runs itself. Powered by high-fidelity <br>code intelligence for agentic engineering.</p>
+
+                <div class="cta-group">
+                    <a href="#" class="btn btn-primary">Get started</a>
+                    <a href="#" class="btn btn-secondary">GitHub ↗</a>
+                </div>
+
+                <div class="terminal-container">
+                    <div class="terminal-header">
+                        <div class="dots">
+                            <span class="dot red"></span>
+                            <span class="dot yellow"></span>
+                            <span class="dot green"></span>
+                        </div>
+                        <span class="terminal-title">Quick Install</span>
+                        <button class="copy-btn" onclick="copyCommand()">
+                            <svg class="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            <svg class="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            <span class="copy-label">Copy</span>
+                        </button>
+                    </div>
+                    <div class="terminal-body">
+                        <code>curl -fsSL https://raw.githubusercontent.com/thuongh2/git-mimir/main/install.sh | sh</code>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        function copyCommand() {
+            const cmd = "curl -fsSL https://raw.githubusercontent.com/thuongh2/git-mimir/main/install.sh | sh";
+            navigator.clipboard.writeText(cmd).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                const label = btn.querySelector('.copy-label');
+                const iconCopy = btn.querySelector('.icon-copy');
+                const iconCheck = btn.querySelector('.icon-check');
+
+                label.innerText = 'Copied!';
+                iconCopy.style.display = 'none';
+                iconCheck.style.display = 'block';
+                btn.classList.add('copied');
+
+                setTimeout(() => {
+                    label.innerText = 'Copy';
+                    iconCopy.style.display = 'block';
+                    iconCheck.style.display = 'none';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
