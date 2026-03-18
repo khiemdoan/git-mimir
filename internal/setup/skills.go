@@ -138,19 +138,28 @@ description: >
   understand how a feature works, or trace a data flow.
 ---
 
+## Prerequisite
+
+**Ensure the MCP daemon is running** before using these tools:
+` + "```bash" + `
+mimir daemon start
+` + "```" + `
+
 ## When to use mimir tools for exploration
 
-1. Start with resources: read mimir://repo/{name}/context for codebase overview
-2. Use query tool for natural language search: "authentication flow", "database connection"
-3. Use context tool for 360-degree view of any symbol
-4. Use cypher tool for custom graph traversal if needed
+1. Start with resources: read ` + "`mimir://repo/{name}/context`" + ` for codebase overview
+2. Use ` + "`query()`" + ` tool for natural language search: "authentication flow", "database connection"
+3. Use ` + "`context()`" + ` tool for 360-degree view of any symbol
+4. Use ` + "`cypher()`" + ` tool for custom graph traversal if needed
 
 ## Exploration pattern
 
+` + "```" + `
 query("entry points for user authentication")
 → find relevant processes
 → context("handleLogin") for full call chain
 → follow outgoing calls to understand the flow
+` + "```" + `
 `
 
 const debuggingSkill = `---
@@ -161,12 +170,19 @@ description: >
   or finding what calls a broken function.
 ---
 
+## Prerequisite
+
+**Ensure the MCP daemon is running** before using these tools:
+` + "```bash" + `
+mimir daemon start
+` + "```" + `
+
 ## Debugging with graph context
 
-1. context(brokenFunction) → see all callers
-2. impact(brokenFunction, "upstream") → full blast radius
-3. query(errorMessage) → find related code by semantic search
-4. detect_changes() → check if recent changes caused the bug
+1. ` + "`context(brokenFunction)`" + ` → see all callers
+2. ` + "`impact(brokenFunction, \"upstream\")`" + ` → full blast radius
+3. ` + "`query(errorMessage)`" + ` → find related code by semantic search
+4. ` + "`detect_changes()`" + ` → check if recent changes caused the bug
 `
 
 const impactSkill = `---
@@ -177,10 +193,17 @@ description: >
   Always run impact analysis before refactoring shared utilities.
 ---
 
+## Prerequisite
+
+**Ensure the MCP daemon is running** before using these tools:
+` + "```bash" + `
+mimir daemon start
+` + "```" + `
+
 ## Pre-edit impact check pattern
 
 BEFORE editing any symbol:
-1. impact(symbolName, "upstream", minConfidence: 0.7)
+1. ` + "`impact(symbolName, \"upstream\", minConfidence: 0.7)`" + `
 2. Review depth-1 callers (WILL BREAK)
 3. Review depth-2 (LIKELY AFFECTED)
 4. Inform user of risk level before proceeding
@@ -194,10 +217,17 @@ description: >
   structural change that affects multiple files.
 ---
 
+## Prerequisite
+
+**Ensure the MCP daemon is running** before using these tools:
+` + "```bash" + `
+mimir daemon start
+` + "```" + `
+
 ## Safe refactor pattern
 
-1. impact(target, "both") — understand full scope
-2. rename(old, new, dry_run: true) — preview all affected files
-3. Check text_search_edits (dynamic references, not in graph)
+1. ` + "`impact(target, \"both\")`" + ` — understand full scope
+2. ` + "`rename(old, new, dry_run: true)`" + ` — preview all affected files
+3. Check ` + "`text_search_edits`" + ` (dynamic references, not in graph)
 4. Execute in order: deepest dependents first, then the symbol itself
 `

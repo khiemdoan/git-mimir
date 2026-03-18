@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -270,10 +271,12 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 
 	// 5. Setup all editors (write MCP config)
 	editorResults := setup.SetupAll()
+	configuredEditors := []string{}
 	for _, r := range editorResults {
 		switch r.Status {
 		case "configured":
 			fmt.Printf("✓ %s — MCP configured\n", r.Editor)
+			configuredEditors = append(configuredEditors, r.Editor)
 		case "not installed":
 			// silent
 		case "error":
@@ -320,8 +323,16 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 	stats, _ := wrapper.Stats()
 	fmt.Printf("\n✓ Done — %d symbols, %d edges, %d clusters, %d processes\n",
 		stats.Nodes, stats.Edges, stats.Clusters, stats.Processes)
-	fmt.Println("  MCP tools: mimir query | context | impact | detect_changes | rename | cypher")
-	fmt.Println("  Restart your editor to pick up the new MCP server.")
+	fmt.Println("  MCP tools: query | context | impact | detect_changes | rename | cypher")
+
+	// Show detected editors and MCP guidance
+	if len(configuredEditors) > 0 {
+		fmt.Printf("  Detected editors: %s\n", strings.Join(configuredEditors, ", "))
+	}
+	fmt.Println("  \n  Next steps:")
+	fmt.Println("  1. Start MCP daemon: mimir daemon start")
+	fmt.Println("  2. Restart your editor to load MCP server configuration")
+	fmt.Println("  3. Use MCP tools (not CLI commands) in your agent conversations")
 
 	return nil
 }
