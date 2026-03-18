@@ -2,18 +2,6 @@
 
 Mimir is a **Go-based code intelligence engine** that indexes your repository into a knowledge graph and exposes it to AI agents via MCP, HTTP API, and an interactive web UI.
 
-```bash
-# 1. Install
-go install github.com/thuongh2/git-mimir/cmd/mimir@latest
-
-# 2. Index your code
-mimir analyze ./my-project
-
-# 3. Connect to Claude Code or open Web UI
-mimir serve
-# http://localhost:7842
-```
-
 ---
 
 ## What is Mimir?
