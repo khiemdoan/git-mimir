@@ -17,6 +17,20 @@ type SetupResult struct {
 	Error      string
 }
 
+// MimirMCPEntryStdio returns the JSON block for mimir MCP server using the VS Code
+// native mcp.json format, which requires a "type" field set to "stdio".
+func MimirMCPEntryStdio() map[string]any {
+	bin, err := exec.LookPath("mimir")
+	if err != nil || bin == "" {
+		bin, _ = os.Executable()
+	}
+	return map[string]any{
+		"type":    "stdio",
+		"command": bin,
+		"args":    []string{"mcp"},
+	}
+}
+
 // MimirMCPEntry returns the JSON block for mimir MCP server
 func MimirMCPEntry() map[string]any {
 	bin, err := exec.LookPath("mimir")
@@ -85,7 +99,11 @@ func WriteToEditor(e Editor) error {
 	if servers == nil {
 		servers = map[string]any{}
 	}
-	servers["mimir"] = MimirMCPEntry()
+	entry := MimirMCPEntry()
+	if e.MimirEntry != nil {
+		entry = e.MimirEntry()
+	}
+	servers["mimir"] = entry
 	parent[finalKey] = servers
 
 	// Write back

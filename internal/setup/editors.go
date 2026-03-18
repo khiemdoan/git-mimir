@@ -21,9 +21,10 @@ func DetectBinary(name string) bool {
 // Editor represents a code editor that supports MCP configuration
 type Editor struct {
 	Name       string
-	ConfigPath func() string // returns absolute path to MCP config file
-	ConfigKey  string        // JSON key where mcpServers lives
-	Detect     func() bool   // returns true if editor is installed
+	ConfigPath func() string         // returns absolute path to MCP config file
+	ConfigKey  string                // JSON key where mcpServers lives
+	Detect     func() bool           // returns true if editor is installed
+	MimirEntry func() map[string]any // optional: custom MCP entry; falls back to MimirMCPEntry()
 }
 
 // Editors is the registry of all supported editors
@@ -87,6 +88,25 @@ var Editors = []Editor{
 			_, err := exec.LookPath("opencode")
 			return err == nil
 		},
+	},
+	{
+		Name: "VS Code (MCP)",
+		ConfigPath: func() string {
+			home, _ := os.UserHomeDir()
+			if runtime.GOOS == "windows" {
+				return filepath.Join(os.Getenv("APPDATA"), "Code", "User", "mcp.json")
+			}
+			if runtime.GOOS == "darwin" {
+				return filepath.Join(home, "Library", "Application Support", "Code", "User", "mcp.json")
+			}
+			return filepath.Join(home, ".config", "Code", "User", "mcp.json")
+		},
+		ConfigKey: "servers",
+		Detect: func() bool {
+			_, err := exec.LookPath("code")
+			return err == nil
+		},
+		MimirEntry: MimirMCPEntryStdio,
 	},
 	{
 		Name: "VS Code (Copilot)",
