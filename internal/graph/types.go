@@ -20,8 +20,8 @@ type Node struct {
 	Name        string
 	Kind        string // Function|Method|Class|Interface|Variable|Constant|Type
 	FilePath    string
-	StartLine   int
-	EndLine     int
+	StartLine   uint
+	EndLine     uint
 	Exported    bool
 	PackagePath string
 	ClusterID   string
@@ -68,5 +68,5 @@ type ImportRef struct {
 type CallRef struct {
 	FromUID    string // node UID of the calling symbol
 	CalleeName string // name of the callee as written in source
-	Line       int
+	Line       uint
 }

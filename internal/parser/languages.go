@@ -1,15 +1,14 @@
 package parser
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
-	"github.com/smacker/go-tree-sitter/cpp"
-	"github.com/smacker/go-tree-sitter/golang"
-	"github.com/smacker/go-tree-sitter/java"
-	"github.com/smacker/go-tree-sitter/javascript"
-	"github.com/smacker/go-tree-sitter/python"
-	"github.com/smacker/go-tree-sitter/rust"
-	"github.com/smacker/go-tree-sitter/typescript/tsx"
-	"github.com/smacker/go-tree-sitter/typescript/typescript"
+	sitter "github.com/tree-sitter/go-tree-sitter"
+	cpp "github.com/tree-sitter/tree-sitter-cpp/bindings/go"
+	golang "github.com/tree-sitter/tree-sitter-go/bindings/go"
+	java "github.com/tree-sitter/tree-sitter-java/bindings/go"
+	javascript "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
+	python "github.com/tree-sitter/tree-sitter-python/bindings/go"
+	rust "github.com/tree-sitter/tree-sitter-rust/bindings/go"
+	typescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 )
 
 // LangID identifies a supported language.
@@ -28,17 +27,17 @@ const (
 
 // extToLang maps file extensions to language IDs.
 var extToLang = map[string]LangID{
-	".ts":  LangTypeScript,
-	".tsx": LangTSX,
-	".js":  LangJavaScript,
-	".jsx": LangJavaScript,
-	".go":  LangGo,
-	".py":  LangPython,
+	".ts":   LangTypeScript,
+	".tsx":  LangTSX,
+	".js":   LangJavaScript,
+	".jsx":  LangJavaScript,
+	".go":   LangGo,
+	".py":   LangPython,
 	".java": LangJava,
-	".rs":  LangRust,
-	".cpp": LangCPP,
-	".cc":  LangCPP,
-	".cxx": LangCPP,
+	".rs":   LangRust,
+	".cpp":  LangCPP,
+	".cc":   LangCPP,
+	".cxx":  LangCPP,
 }
 
 // LangForExt returns the language ID for a file extension, or "" if unsupported.
@@ -50,21 +49,21 @@ func LangForExt(ext string) LangID {
 func grammarForLang(id LangID) *sitter.Language {
 	switch id {
 	case LangTypeScript:
-		return typescript.GetLanguage()
+		return sitter.NewLanguage(typescript.LanguageTypescript())
 	case LangTSX:
-		return tsx.GetLanguage()
+		return sitter.NewLanguage(typescript.LanguageTSX())
 	case LangJavaScript:
-		return javascript.GetLanguage()
+		return sitter.NewLanguage(javascript.Language())
 	case LangGo:
-		return golang.GetLanguage()
+		return sitter.NewLanguage(golang.Language())
 	case LangPython:
-		return python.GetLanguage()
+		return sitter.NewLanguage(python.Language())
 	case LangJava:
-		return java.GetLanguage()
+		return sitter.NewLanguage(java.Language())
 	case LangRust:
-		return rust.GetLanguage()
+		return sitter.NewLanguage(rust.Language())
 	case LangCPP:
-		return cpp.GetLanguage()
+		return sitter.NewLanguage(cpp.Language())
 	default:
 		return nil
 	}
