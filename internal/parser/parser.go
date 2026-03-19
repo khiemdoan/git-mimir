@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/thuongh2/git-mimir/internal/graph"
+	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 // treeParser wraps a pre-allocated tree-sitter parser for one language.
@@ -51,9 +51,9 @@ func ParseFile(path string, src []byte) (*graph.FileSymbols, error) {
 
 // parse extracts symbols from a source file using the pre-allocated parser.
 func (tp *treeParser) parse(path string, src []byte) (*graph.FileSymbols, error) {
-	tree, err := tp.parser.ParseCtx(context.Background(), nil, src)
-	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+	tree := tp.parser.ParseCtx(context.Background(), src, nil)
+	if tree == nil {
+		return nil, fmt.Errorf("parse %s failed", path)
 	}
 	defer tree.Close()
 
@@ -85,18 +85,18 @@ func extractTS(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 
 	var walk func(n *sitter.Node, exported bool)
 	walk = func(n *sitter.Node, exported bool) {
-		switch n.Type() {
+		switch n.Kind() {
 		case "export_statement":
 			// Mark children as exported
-			for i := 0; i < int(n.ChildCount()); i++ {
+			for i := uint(0); i < n.ChildCount(); i++ {
 				child := n.Child(i)
-				if child.Type() != "export" && child.Type() != "default" {
+				if child.Kind() != "export" && child.Kind() != "default" {
 					walk(child, true)
 				}
 			}
 			// Handle re-exports: export { x } from './y'
 			if source := n.ChildByFieldName("source"); source != nil {
-				importPath := strings.Trim(source.Content(src), `"'`)
+				importPath := strings.Trim(source.Utf8Text(src), `"'`)
 				fs.Imports = append(fs.Imports, graph.ImportRef{
 					ImportPath: importPath,
 				})
@@ -105,10 +105,10 @@ func extractTS(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 
 		case "import_statement":
 			if source := n.ChildByFieldName("source"); source != nil {
-				importPath := strings.Trim(source.Content(src), `"'`)
+				importPath := strings.Trim(source.Utf8Text(src), `"'`)
 				isType := false
 				if importKind := n.ChildByFieldName("import"); importKind != nil {
-					isType = strings.Contains(importKind.Content(src), "type")
+					isType = strings.Contains(importKind.Utf8Text(src), "type")
 				}
 				fs.Imports = append(fs.Imports, graph.ImportRef{
 					ImportPath: importPath,
@@ -119,15 +119,15 @@ func extractTS(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 		case "function_declaration":
 			nameNode := n.ChildByFieldName("name")
 			if nameNode != nil {
-				name := nameNode.Content(src)
+				name := nameNode.Utf8Text(src)
 				uid := graph.NodeUID(path, name, "Function")
 				node := graph.Node{
 					UID:       uid,
 					Name:      name,
 					Kind:      "Function",
 					FilePath:  path,
-					StartLine: int(n.StartPoint().Row) + 1,
-					EndLine:   int(n.EndPoint().Row) + 1,
+					StartLine: n.StartPosition().Row + 1,
+					EndLine:   n.EndPosition().Row + 1,
 					Exported:  exported,
 				}
 				fs.Nodes = append(fs.Nodes, node)
@@ -140,7 +140,7 @@ func extractTS(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 		case "method_definition":
 			nameNode := n.ChildByFieldName("name")
 			if nameNode != nil {
-				name := nameNode.Content(src)
+				name := nameNode.Utf8Text(src)
 				kind := "Method"
 				uid := graph.NodeUID(path, currentClass+"."+name, kind)
 				node := graph.Node{
@@ -148,8 +148,8 @@ func extractTS(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 					Name:      name,
 					Kind:      kind,
 					FilePath:  path,
-					StartLine: int(n.StartPoint().Row) + 1,
-					EndLine:   int(n.EndPoint().Row) + 1,
+					StartLine: n.StartPosition().Row + 1,
+					EndLine:   n.EndPosition().Row + 1,
 					Exported:  exported || currentClass != "",
 				}
 				fs.Nodes = append(fs.Nodes, node)
@@ -168,15 +168,15 @@ func extractTS(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 		case "class_declaration":
 			nameNode := n.ChildByFieldName("name")
 			if nameNode != nil {
-				name := nameNode.Content(src)
+				name := nameNode.Utf8Text(src)
 				uid := graph.NodeUID(path, name, "Class")
 				node := graph.Node{
 					UID:       uid,
 					Name:      name,
 					Kind:      "Class",
 					FilePath:  path,
-					StartLine: int(n.StartPoint().Row) + 1,
-					EndLine:   int(n.EndPoint().Row) + 1,
+					StartLine: n.StartPosition().Row + 1,
+					EndLine:   n.EndPosition().Row + 1,
 					Exported:  exported,
 				}
 				fs.Nodes = append(fs.Nodes, node)
@@ -196,15 +196,15 @@ func extractTS(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 		case "interface_declaration":
 			nameNode := n.ChildByFieldName("name")
 			if nameNode != nil {
-				name := nameNode.Content(src)
+				name := nameNode.Utf8Text(src)
 				uid := graph.NodeUID(path, name, "Interface")
 				fs.Nodes = append(fs.Nodes, graph.Node{
 					UID:       uid,
 					Name:      name,
 					Kind:      "Interface",
 					FilePath:  path,
-					StartLine: int(n.StartPoint().Row) + 1,
-					EndLine:   int(n.EndPoint().Row) + 1,
+					StartLine: n.StartPosition().Row + 1,
+					EndLine:   n.EndPosition().Row + 1,
 					Exported:  exported,
 				})
 			}
@@ -212,22 +212,22 @@ func extractTS(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 		case "lexical_declaration", "variable_declaration":
 			// Handle: const foo = () => {} or const foo = function() {}
 			for i := 0; i < int(n.ChildCount()); i++ {
-				child := n.Child(i)
-				if child.Type() == "variable_declarator" {
+				child := n.Child(uint(i))
+				if child.Kind() == "variable_declarator" {
 					nameNode := child.ChildByFieldName("name")
 					valNode := child.ChildByFieldName("value")
 					if nameNode != nil && valNode != nil {
 						kind := kindOfVarDecl(valNode)
 						if kind != "" {
-							name := nameNode.Content(src)
+							name := nameNode.Utf8Text(src)
 							uid := graph.NodeUID(path, name, kind)
 							fs.Nodes = append(fs.Nodes, graph.Node{
 								UID:       uid,
 								Name:      name,
 								Kind:      kind,
 								FilePath:  path,
-								StartLine: int(n.StartPoint().Row) + 1,
-								EndLine:   int(n.EndPoint().Row) + 1,
+								StartLine: n.StartPosition().Row + 1,
+								EndLine:   n.EndPosition().Row + 1,
 								Exported:  exported,
 							})
 							extractCalls(valNode, src, uid, fs)
@@ -239,7 +239,7 @@ func extractTS(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 
 		// Recurse
 		for i := 0; i < int(n.ChildCount()); i++ {
-			walk(n.Child(i), false)
+			walk(n.Child(uint(i)), false)
 		}
 	}
 
@@ -247,7 +247,7 @@ func extractTS(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 }
 
 func kindOfVarDecl(n *sitter.Node) string {
-	switch n.Type() {
+	switch n.Kind() {
 	case "arrow_function", "function", "function_expression":
 		return "Function"
 	case "class":
@@ -259,25 +259,25 @@ func kindOfVarDecl(n *sitter.Node) string {
 
 func extractHeritage(n *sitter.Node, src []byte, ownerUID string, fs *graph.FileSymbols) {
 	for i := 0; i < int(n.ChildCount()); i++ {
-		child := n.Child(i)
-		switch child.Type() {
+		child := n.Child(uint(i))
+		switch child.Kind() {
 		case "extends_clause":
 			for j := 0; j < int(child.ChildCount()); j++ {
-				c := child.Child(j)
-				if c.Type() == "identifier" || c.Type() == "type_identifier" {
+				c := child.Child(uint(j))
+				if c.Kind() == "identifier" || c.Kind() == "type_identifier" {
 					fs.Calls = append(fs.Calls, graph.CallRef{
 						FromUID:    ownerUID,
-						CalleeName: "EXTENDS:" + c.Content(src),
+						CalleeName: "EXTENDS:" + c.Utf8Text(src),
 					})
 				}
 			}
 		case "implements_clause":
 			for j := 0; j < int(child.ChildCount()); j++ {
-				c := child.Child(j)
-				if c.Type() == "type_identifier" || c.Type() == "identifier" {
+				c := child.Child(uint(j))
+				if c.Kind() == "type_identifier" || c.Kind() == "identifier" {
 					fs.Calls = append(fs.Calls, graph.CallRef{
 						FromUID:    ownerUID,
-						CalleeName: "IMPLEMENTS:" + c.Content(src),
+						CalleeName: "IMPLEMENTS:" + c.Utf8Text(src),
 					})
 				}
 			}
@@ -288,7 +288,7 @@ func extractHeritage(n *sitter.Node, src []byte, ownerUID string, fs *graph.File
 func extractCalls(n *sitter.Node, src []byte, ownerUID string, fs *graph.FileSymbols) {
 	var walk func(n *sitter.Node)
 	walk = func(n *sitter.Node) {
-		if n.Type() == "call_expression" {
+		if n.Kind() == "call_expression" {
 			fn := n.ChildByFieldName("function")
 			if fn != nil {
 				callee := calleeText(fn, src)
@@ -296,27 +296,27 @@ func extractCalls(n *sitter.Node, src []byte, ownerUID string, fs *graph.FileSym
 					fs.Calls = append(fs.Calls, graph.CallRef{
 						FromUID:    ownerUID,
 						CalleeName: callee,
-						Line:       int(n.StartPoint().Row) + 1,
+						Line:       n.StartPosition().Row + 1,
 					})
 				}
 			}
 		}
 		for i := 0; i < int(n.ChildCount()); i++ {
-			walk(n.Child(i))
+			walk(n.Child(uint(i)))
 		}
 	}
 	walk(n)
 }
 
 func calleeText(n *sitter.Node, src []byte) string {
-	switch n.Type() {
+	switch n.Kind() {
 	case "identifier":
-		return n.Content(src)
+		return n.Utf8Text(src)
 	case "member_expression":
 		obj := n.ChildByFieldName("object")
 		prop := n.ChildByFieldName("property")
 		if obj != nil && prop != nil {
-			return obj.Content(src) + "." + prop.Content(src)
+			return obj.Utf8Text(src) + "." + prop.Utf8Text(src)
 		}
 	}
 	return ""
@@ -330,15 +330,15 @@ func extractGo(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 
 	var walk func(n *sitter.Node)
 	walk = func(n *sitter.Node) {
-		switch n.Type() {
+		switch n.Kind() {
 		case "import_declaration", "import_spec":
-			if n.Type() == "import_spec" {
+			if n.Kind() == "import_spec" {
 				pathNode := n.ChildByFieldName("path")
 				if pathNode != nil {
-					importPath := strings.Trim(pathNode.Content(src), `"`)
+					importPath := strings.Trim(pathNode.Utf8Text(src), `"`)
 					alias := ""
 					if nameNode := n.ChildByFieldName("name"); nameNode != nil {
-						alias = nameNode.Content(src)
+						alias = nameNode.Utf8Text(src)
 					}
 					fs.Imports = append(fs.Imports, graph.ImportRef{
 						ImportPath: importPath,
@@ -350,7 +350,7 @@ func extractGo(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 		case "function_declaration":
 			nameNode := n.ChildByFieldName("name")
 			if nameNode != nil {
-				name := nameNode.Content(src)
+				name := nameNode.Utf8Text(src)
 				exported := len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z'
 				uid := graph.NodeUID(path, name, "Function")
 				fs.Nodes = append(fs.Nodes, graph.Node{
@@ -358,8 +358,8 @@ func extractGo(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 					Name:        name,
 					Kind:        "Function",
 					FilePath:    path,
-					StartLine:   int(n.StartPoint().Row) + 1,
-					EndLine:     int(n.EndPoint().Row) + 1,
+					StartLine:   n.StartPosition().Row + 1,
+					EndLine:     n.EndPosition().Row + 1,
 					Exported:    exported,
 					PackagePath: pkgPath,
 				})
@@ -374,10 +374,10 @@ func extractGo(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 			nameNode := n.ChildByFieldName("name")
 			receiverNode := n.ChildByFieldName("receiver")
 			if nameNode != nil {
-				name := nameNode.Content(src)
+				name := nameNode.Utf8Text(src)
 				receiverType := ""
 				if receiverNode != nil {
-					receiverType = receiverNode.Content(src)
+					receiverType = receiverNode.Utf8Text(src)
 					// Strip parens and type parts: "(r *Foo)" -> "Foo"
 					receiverType = strings.Trim(receiverType, "()")
 					parts := strings.Fields(receiverType)
@@ -393,8 +393,8 @@ func extractGo(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 					Name:        name,
 					Kind:        "Method",
 					FilePath:    path,
-					StartLine:   int(n.StartPoint().Row) + 1,
-					EndLine:     int(n.EndPoint().Row) + 1,
+					StartLine:   n.StartPosition().Row + 1,
+					EndLine:     n.EndPosition().Row + 1,
 					Exported:    exported,
 					PackagePath: pkgPath,
 				})
@@ -407,17 +407,17 @@ func extractGo(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 
 		case "type_declaration":
 			for i := 0; i < int(n.ChildCount()); i++ {
-				spec := n.Child(i)
-				if spec.Type() == "type_spec" {
+				spec := n.Child(uint(i))
+				if spec.Kind() == "type_spec" {
 					nameNode := spec.ChildByFieldName("name")
 					typeNode := spec.ChildByFieldName("type")
 					if nameNode != nil {
-						name := nameNode.Content(src)
+						name := nameNode.Utf8Text(src)
 						exported := len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z'
 						kind := "Type"
-						if typeNode != nil && typeNode.Type() == "struct_type" {
+						if typeNode != nil && typeNode.Kind() == "struct_type" {
 							kind = "Class"
-						} else if typeNode != nil && typeNode.Type() == "interface_type" {
+						} else if typeNode != nil && typeNode.Kind() == "interface_type" {
 							kind = "Interface"
 						}
 						uid := graph.NodeUID(path, name, kind)
@@ -426,8 +426,8 @@ func extractGo(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 							Name:        name,
 							Kind:        kind,
 							FilePath:    path,
-							StartLine:   int(n.StartPoint().Row) + 1,
-							EndLine:     int(n.EndPoint().Row) + 1,
+							StartLine:   n.StartPosition().Row + 1,
+							EndLine:     n.EndPosition().Row + 1,
 							Exported:    exported,
 							PackagePath: pkgPath,
 						})
@@ -437,7 +437,7 @@ func extractGo(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 		}
 
 		for i := 0; i < int(n.ChildCount()); i++ {
-			walk(n.Child(i))
+			walk(n.Child(uint(i)))
 		}
 	}
 	walk(root)
@@ -448,13 +448,13 @@ func extractGo(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols
 func extractPython(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols) {
 	var walk func(n *sitter.Node)
 	walk = func(n *sitter.Node) {
-		switch n.Type() {
+		switch n.Kind() {
 		case "import_statement", "import_from_statement":
-			if n.Type() == "import_from_statement" {
+			if n.Kind() == "import_from_statement" {
 				modNode := n.ChildByFieldName("module_name")
 				if modNode != nil {
 					fs.Imports = append(fs.Imports, graph.ImportRef{
-						ImportPath: modNode.Content(src),
+						ImportPath: modNode.Utf8Text(src),
 					})
 				}
 			}
@@ -462,15 +462,15 @@ func extractPython(root *sitter.Node, src []byte, path string, fs *graph.FileSym
 		case "function_definition":
 			nameNode := n.ChildByFieldName("name")
 			if nameNode != nil {
-				name := nameNode.Content(src)
+				name := nameNode.Utf8Text(src)
 				uid := graph.NodeUID(path, name, "Function")
 				fs.Nodes = append(fs.Nodes, graph.Node{
 					UID:       uid,
 					Name:      name,
 					Kind:      "Function",
 					FilePath:  path,
-					StartLine: int(n.StartPoint().Row) + 1,
-					EndLine:   int(n.EndPoint().Row) + 1,
+					StartLine: n.StartPosition().Row + 1,
+					EndLine:   n.EndPosition().Row + 1,
 					Exported:  !strings.HasPrefix(name, "_"),
 				})
 				if body := n.ChildByFieldName("body"); body != nil {
@@ -482,21 +482,21 @@ func extractPython(root *sitter.Node, src []byte, path string, fs *graph.FileSym
 		case "class_definition":
 			nameNode := n.ChildByFieldName("name")
 			if nameNode != nil {
-				name := nameNode.Content(src)
+				name := nameNode.Utf8Text(src)
 				uid := graph.NodeUID(path, name, "Class")
 				fs.Nodes = append(fs.Nodes, graph.Node{
 					UID:       uid,
 					Name:      name,
 					Kind:      "Class",
 					FilePath:  path,
-					StartLine: int(n.StartPoint().Row) + 1,
-					EndLine:   int(n.EndPoint().Row) + 1,
+					StartLine: n.StartPosition().Row + 1,
+					EndLine:   n.EndPosition().Row + 1,
 					Exported:  !strings.HasPrefix(name, "_"),
 				})
 			}
 		}
 		for i := 0; i < int(n.ChildCount()); i++ {
-			walk(n.Child(i))
+			walk(n.Child(uint(i)))
 		}
 	}
 	walk(root)
@@ -505,21 +505,21 @@ func extractPython(root *sitter.Node, src []byte, path string, fs *graph.FileSym
 func extractCallsPython(n *sitter.Node, src []byte, ownerUID string, fs *graph.FileSymbols) {
 	var walk func(n *sitter.Node)
 	walk = func(n *sitter.Node) {
-		if n.Type() == "call" {
+		if n.Kind() == "call" {
 			fn := n.ChildByFieldName("function")
 			if fn != nil {
-				callee := fn.Content(src)
+				callee := fn.Utf8Text(src)
 				if callee != "" {
 					fs.Calls = append(fs.Calls, graph.CallRef{
 						FromUID:    ownerUID,
 						CalleeName: callee,
-						Line:       int(n.StartPoint().Row) + 1,
+						Line:       n.StartPosition().Row + 1,
 					})
 				}
 			}
 		}
 		for i := 0; i < int(n.ChildCount()); i++ {
-			walk(n.Child(i))
+			walk(n.Child(uint(i)))
 		}
 	}
 	walk(n)
@@ -530,45 +530,45 @@ func extractCallsPython(n *sitter.Node, src []byte, ownerUID string, fs *graph.F
 func extractJava(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols) {
 	var walk func(n *sitter.Node)
 	walk = func(n *sitter.Node) {
-		switch n.Type() {
+		switch n.Kind() {
 		case "import_declaration":
 			for i := 0; i < int(n.ChildCount()); i++ {
-				c := n.Child(i)
-				if c.Type() == "scoped_identifier" {
-					fs.Imports = append(fs.Imports, graph.ImportRef{ImportPath: c.Content(src)})
+				c := n.Child(uint(i))
+				if c.Kind() == "scoped_identifier" {
+					fs.Imports = append(fs.Imports, graph.ImportRef{ImportPath: c.Utf8Text(src)})
 				}
 			}
 		case "class_declaration", "interface_declaration", "enum_declaration":
 			nameNode := n.ChildByFieldName("name")
 			if nameNode != nil {
 				kind := "Class"
-				if n.Type() == "interface_declaration" {
+				if n.Kind() == "interface_declaration" {
 					kind = "Interface"
 				}
-				name := nameNode.Content(src)
+				name := nameNode.Utf8Text(src)
 				uid := graph.NodeUID(path, name, kind)
 				fs.Nodes = append(fs.Nodes, graph.Node{
 					UID:       uid,
 					Name:      name,
 					Kind:      kind,
 					FilePath:  path,
-					StartLine: int(n.StartPoint().Row) + 1,
-					EndLine:   int(n.EndPoint().Row) + 1,
+					StartLine: n.StartPosition().Row + 1,
+					EndLine:   n.EndPosition().Row + 1,
 					Exported:  true,
 				})
 			}
 		case "method_declaration":
 			nameNode := n.ChildByFieldName("name")
 			if nameNode != nil {
-				name := nameNode.Content(src)
+				name := nameNode.Utf8Text(src)
 				uid := graph.NodeUID(path, name, "Method")
 				fs.Nodes = append(fs.Nodes, graph.Node{
 					UID:       uid,
 					Name:      name,
 					Kind:      "Method",
 					FilePath:  path,
-					StartLine: int(n.StartPoint().Row) + 1,
-					EndLine:   int(n.EndPoint().Row) + 1,
+					StartLine: n.StartPosition().Row + 1,
+					EndLine:   n.EndPosition().Row + 1,
 					Exported:  true,
 				})
 				if body := n.ChildByFieldName("body"); body != nil {
@@ -578,7 +578,7 @@ func extractJava(root *sitter.Node, src []byte, path string, fs *graph.FileSymbo
 			}
 		}
 		for i := 0; i < int(n.ChildCount()); i++ {
-			walk(n.Child(i))
+			walk(n.Child(uint(i)))
 		}
 	}
 	walk(root)
@@ -589,21 +589,21 @@ func extractJava(root *sitter.Node, src []byte, path string, fs *graph.FileSymbo
 func extractRust(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols) {
 	var walk func(n *sitter.Node)
 	walk = func(n *sitter.Node) {
-		switch n.Type() {
+		switch n.Kind() {
 		case "use_declaration":
 			for i := 0; i < int(n.ChildCount()); i++ {
-				c := n.Child(i)
-				if c.Type() == "scoped_identifier" || c.Type() == "identifier" {
-					fs.Imports = append(fs.Imports, graph.ImportRef{ImportPath: c.Content(src)})
+				c := n.Child(uint(i))
+				if c.Kind() == "scoped_identifier" || c.Kind() == "identifier" {
+					fs.Imports = append(fs.Imports, graph.ImportRef{ImportPath: c.Utf8Text(src)})
 				}
 			}
 		case "function_item":
 			nameNode := n.ChildByFieldName("name")
 			if nameNode != nil {
-				name := nameNode.Content(src)
+				name := nameNode.Utf8Text(src)
 				uid := graph.NodeUID(path, name, "Function")
 				pub := false
-				if n.Child(0) != nil && n.Child(0).Content(src) == "pub" {
+				if n.Child(0) != nil && n.Child(0).Utf8Text(src) == "pub" {
 					pub = true
 				}
 				fs.Nodes = append(fs.Nodes, graph.Node{
@@ -611,8 +611,8 @@ func extractRust(root *sitter.Node, src []byte, path string, fs *graph.FileSymbo
 					Name:      name,
 					Kind:      "Function",
 					FilePath:  path,
-					StartLine: int(n.StartPoint().Row) + 1,
-					EndLine:   int(n.EndPoint().Row) + 1,
+					StartLine: n.StartPosition().Row + 1,
+					EndLine:   n.EndPosition().Row + 1,
 					Exported:  pub,
 				})
 				if body := n.ChildByFieldName("body"); body != nil {
@@ -624,23 +624,23 @@ func extractRust(root *sitter.Node, src []byte, path string, fs *graph.FileSymbo
 			nameNode := n.ChildByFieldName("name")
 			if nameNode != nil {
 				kind := "Class"
-				if n.Type() == "trait_item" {
+				if n.Kind() == "trait_item" {
 					kind = "Interface"
 				}
-				name := nameNode.Content(src)
+				name := nameNode.Utf8Text(src)
 				uid := graph.NodeUID(path, name, kind)
 				fs.Nodes = append(fs.Nodes, graph.Node{
 					UID:       uid,
 					Name:      name,
 					Kind:      kind,
 					FilePath:  path,
-					StartLine: int(n.StartPoint().Row) + 1,
-					EndLine:   int(n.EndPoint().Row) + 1,
+					StartLine: n.StartPosition().Row + 1,
+					EndLine:   n.EndPosition().Row + 1,
 				})
 			}
 		}
 		for i := 0; i < int(n.ChildCount()); i++ {
-			walk(n.Child(i))
+			walk(n.Child(uint(i)))
 		}
 	}
 	walk(root)
@@ -651,26 +651,26 @@ func extractRust(root *sitter.Node, src []byte, path string, fs *graph.FileSymbo
 func extractCPP(root *sitter.Node, src []byte, path string, fs *graph.FileSymbols) {
 	var walk func(n *sitter.Node)
 	walk = func(n *sitter.Node) {
-		switch n.Type() {
+		switch n.Kind() {
 		case "preproc_include":
 			pathNode := n.ChildByFieldName("path")
 			if pathNode != nil {
-				fs.Imports = append(fs.Imports, graph.ImportRef{ImportPath: pathNode.Content(src)})
+				fs.Imports = append(fs.Imports, graph.ImportRef{ImportPath: pathNode.Utf8Text(src)})
 			}
 		case "function_definition":
 			declarator := n.ChildByFieldName("declarator")
 			if declarator != nil {
 				nameNode := findFirstIdentifier(declarator)
 				if nameNode != nil {
-					name := nameNode.Content(src)
+					name := nameNode.Utf8Text(src)
 					uid := graph.NodeUID(path, name, "Function")
 					fs.Nodes = append(fs.Nodes, graph.Node{
 						UID:       uid,
 						Name:      name,
 						Kind:      "Function",
 						FilePath:  path,
-						StartLine: int(n.StartPoint().Row) + 1,
-						EndLine:   int(n.EndPoint().Row) + 1,
+						StartLine: n.StartPosition().Row + 1,
+						EndLine:   n.EndPosition().Row + 1,
 					})
 					if body := n.ChildByFieldName("body"); body != nil {
 						extractCalls(body, src, uid, fs)
@@ -681,34 +681,33 @@ func extractCPP(root *sitter.Node, src []byte, path string, fs *graph.FileSymbol
 		case "class_specifier", "struct_specifier":
 			nameNode := n.ChildByFieldName("name")
 			if nameNode != nil {
-				name := nameNode.Content(src)
+				name := nameNode.Utf8Text(src)
 				uid := graph.NodeUID(path, name, "Class")
 				fs.Nodes = append(fs.Nodes, graph.Node{
 					UID:       uid,
 					Name:      name,
 					Kind:      "Class",
 					FilePath:  path,
-					StartLine: int(n.StartPoint().Row) + 1,
-					EndLine:   int(n.EndPoint().Row) + 1,
+					StartLine: n.StartPosition().Row + 1,
+					EndLine:   n.EndPosition().Row + 1,
 				})
 			}
 		}
 		for i := 0; i < int(n.ChildCount()); i++ {
-			walk(n.Child(i))
+			walk(n.Child(uint(i)))
 		}
 	}
 	walk(root)
 }
 
 func findFirstIdentifier(n *sitter.Node) *sitter.Node {
-	if n.Type() == "identifier" || n.Type() == "qualified_identifier" {
+	if n.Kind() == "identifier" || n.Kind() == "qualified_identifier" {
 		return n
 	}
 	for i := 0; i < int(n.ChildCount()); i++ {
-		if found := findFirstIdentifier(n.Child(i)); found != nil {
+		if found := findFirstIdentifier(n.Child(uint(i))); found != nil {
 			return found
 		}
 	}
 	return nil
 }
-

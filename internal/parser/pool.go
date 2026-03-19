@@ -9,9 +9,9 @@ import (
 	"runtime"
 	"sync"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/thuongh2/git-mimir/internal/graph"
 	"github.com/thuongh2/git-mimir/internal/walker"
+	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 // worker holds a pre-allocated set of parsers (one per supported language)
