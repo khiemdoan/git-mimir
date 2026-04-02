@@ -247,8 +247,9 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
 		for _, n := range allNodes {
 			w.Enqueue(embedder.EmbedJob{UID: n.UID, Text: n.Name + " " + n.FilePath + " " + n.Kind})
 		}
-		fmt.Println("Indexing complete. Embeddings generating in background.")
-		fmt.Println("Run `mimir status` to check embedding progress.")
+		fmt.Println("Indexing complete. Embeddings generating...")
+		w.Close()
+		fmt.Println("Embeddings generation complete.")
 	} else {
 		fmt.Println("Indexing complete (embeddings skipped).")
 	}

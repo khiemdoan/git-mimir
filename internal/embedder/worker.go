@@ -3,6 +3,7 @@ package embedder
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/thuongh2/git-mimir/internal/store"
@@ -24,12 +25,14 @@ type Worker struct {
 	queue chan EmbedJob
 	s     *store.Store
 	emb   Embedder
+	wg    sync.WaitGroup
 }
 
 // NewWorker creates a new embedding worker.
 func NewWorker(s *store.Store, emb Embedder) *Worker {
 	return &Worker{
-		queue: make(chan EmbedJob, 1000),
+		// Large buffer to handle repos with 100k+ symbols without dropping jobs
+		queue: make(chan EmbedJob, 100000),
 		s:     s,
 		emb:   emb,
 	}
@@ -41,12 +44,15 @@ func (w *Worker) Enqueue(job EmbedJob) {
 	case w.queue <- job:
 	default:
 		// Queue full — skip (embeddings are best-effort)
+		log.Printf("embedder: job dropped for %s (queue full)", job.UID)
 	}
 }
 
 // Start runs the worker in a background goroutine until ctx is cancelled.
 func (w *Worker) Start(ctx context.Context) {
+	w.wg.Add(1)
 	go func() {
+		defer w.wg.Done()
 		for {
 			batch, ok := w.collectBatch(ctx)
 			if !ok {
@@ -61,6 +67,12 @@ func (w *Worker) Start(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// Close signals the worker to finish processing and waits for completion.
+func (w *Worker) Close() {
+	close(w.queue)
+	w.wg.Wait()
 }
 
 // collectBatch gathers up to batchSize jobs or waits up to batchTimeout.
