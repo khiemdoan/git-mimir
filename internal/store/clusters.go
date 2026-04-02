@@ -69,16 +69,25 @@ func (s *Store) SetClusterForNodes(memberUIDs []string, clusterID string) error 
 		return nil
 	}
 	return s.Write(func(tx *sql.Tx) error {
-		placeholders := strings.Repeat("?,", len(memberUIDs))
-		placeholders = placeholders[:len(placeholders)-1]
-		args := make([]any, len(memberUIDs)+1)
-		args[0] = clusterID
-		for i, uid := range memberUIDs {
-			args[i+1] = uid
+		// Batch UIDs to avoid SQLite variable limit (~999)
+		const batchSize = 500
+		for i := 0; i < len(memberUIDs); i += batchSize {
+			end := min(i+batchSize, len(memberUIDs))
+			batch := memberUIDs[i:end]
+
+			placeholders := strings.Repeat("?,", len(batch))
+			placeholders = placeholders[:len(placeholders)-1]
+			args := make([]any, len(batch)+1)
+			args[0] = clusterID
+			for j, uid := range batch {
+				args[j+1] = uid
+			}
+			if _, err := tx.Exec(fmt.Sprintf(
+				`UPDATE nodes SET cluster_id=? WHERE uid IN (%s)`, placeholders), args...); err != nil {
+				return err
+			}
 		}
-		_, err := tx.Exec(fmt.Sprintf(
-			`UPDATE nodes SET cluster_id=? WHERE uid IN (%s)`, placeholders), args...)
-		return err
+		return nil
 	})
 }
 
