@@ -137,6 +137,35 @@ For detailed usage, see [docs/guide.md](docs/guide.md).
 
 ---
 
+## Testing MCP Tools Locally
+
+Use [MCP Inspector](https://github.com/modelcontextprotocol/inspector) — the official browser-based UI for exploring and calling MCP tools interactively:
+
+```bash
+# Build first
+make build
+
+# Index the current repo
+./bin/mimir analyze .
+
+# Launch MCP Inspector (requires Node.js)
+npx @modelcontextprotocol/inspector ./bin/mimir mcp
+```
+
+Then open **http://localhost:5173** in your browser. You can browse all 12 tools, fill in arguments via a form, and see the JSON responses in real time.
+
+Alternatively, test via raw stdin:
+
+```bash
+# List all tools
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | ./bin/mimir mcp
+
+# Call a tool
+echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_repos","arguments":{}}}' | ./bin/mimir mcp
+```
+
+---
+
 ## Auto-Analyze Features
 
 Running `mimir analyze` automatically sets up:
