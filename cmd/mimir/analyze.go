@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/schollz/progressbar/v3"
+
 	"github.com/spf13/cobra"
 	"github.com/thuongh2/git-mimir/internal/cluster"
 	"github.com/thuongh2/git-mimir/internal/daemon"
@@ -26,17 +28,17 @@ import (
 )
 
 var (
-	analyzeForce        bool
-	analyzeSkipEmbeds   bool
-	analyzeResolution   float64
-	analyzeName         string
-	analyzeIncremental  bool
-	analyzeHint         string
-	analyzeRepo         string
-	analyzeSkipHooks    bool
-	analyzeSkipSkills   bool
-	analyzeSkipDaemon   bool
-	analyzeQuiet        bool
+	analyzeForce       bool
+	analyzeSkipEmbeds  bool
+	analyzeResolution  float64
+	analyzeName        string
+	analyzeIncremental bool
+	analyzeHint        string
+	analyzeRepo        string
+	analyzeSkipHooks   bool
+	analyzeSkipSkills  bool
+	analyzeSkipDaemon  bool
+	analyzeQuiet       bool
 )
 
 func init() {
@@ -342,29 +344,57 @@ func fullIndex(ctx context.Context, repoPath string, s *store.Store) ([]graph.Fi
 	concurrency := runtime.GOMAXPROCS(0)
 	start := time.Now()
 
-	fileCh := walker.WalkRepo(repoPath, concurrency)
-
-	// Count files while forwarding to parser pool
-	counted := make(chan walker.FileInfo, concurrency*16)
-	fileCount := 0
-	go func() {
-		for f := range fileCh {
-			counted <- f
-			fileCount++
+	// Walk synchronously so we know the total before parsing starts.
+	allFiles, err := walker.CollectFiles(repoPath)
+	if err != nil {
+		return nil, 0, fmt.Errorf("walk: %w", err)
+	}
+	// Pre-filter to supported extensions so total matches actual parser output.
+	files := allFiles[:0]
+	for _, f := range allFiles {
+		if parser.LangForExt(f.Ext) != "" {
+			files = append(files, f)
 		}
-		close(counted)
+	}
+	total := len(files)
+
+	var bar *progressbar.ProgressBar
+	if !analyzeQuiet {
+		bar = progressbar.NewOptions(total,
+			progressbar.OptionSetWriter(os.Stderr),
+			progressbar.OptionSetDescription("Parsing"),
+			progressbar.OptionSetWidth(30),
+			progressbar.OptionShowCount(),
+			progressbar.OptionShowIts(),
+			progressbar.OptionSetItsString("files"),
+			progressbar.OptionOnCompletion(func() { fmt.Fprint(os.Stderr, "\n") }),
+		)
+	}
+
+	// Fan collected files into a channel for the parser pool.
+	fileCh := make(chan walker.FileInfo, concurrency*16)
+	go func() {
+		for _, f := range files {
+			fileCh <- f
+		}
+		close(fileCh)
 	}()
 
 	pool := parser.NewParserPool(concurrency)
-	symsCh := pool.Run(ctx, counted)
+	symsCh := pool.Run(ctx, fileCh)
 
 	var allSymbols []graph.FileSymbols
 	for fs := range symsCh {
 		allSymbols = append(allSymbols, fs)
+		if bar != nil {
+			_ = bar.Add(1)
+		}
 	}
 
-	fmt.Printf("Walked %s in %s\n", repoPath, time.Since(start).Round(time.Millisecond))
-	return allSymbols, fileCount, nil
+	if !analyzeQuiet {
+		fmt.Fprintf(os.Stderr, "Parsed %d files (%s)\n", len(allSymbols), time.Since(start).Round(time.Millisecond))
+	}
+	return allSymbols, len(allSymbols), nil
 }
 
 func isIncrementalCandidate(s *store.Store) bool {
