@@ -28,8 +28,22 @@ Before writing code, run `mimir serve` and open `http://localhost:7842`.
 When chatting with Claude, you can prompt it to use Mimir effectively:
 
 *   **"Query the graph"**: Instead of letting Claude search files with `grep`, tell it: *"Use Mimir to find all processes related to 'user authentication'."* Mimir will return logical flows, not just lines of code.
+*   **"Find callers (lightweight)"**: Before touching a function, ask: *"Use `find_referencing` to show me every symbol that calls `ProcessOrder`."* This is faster than `context` when you only need the caller list — it does a single 1-hop edge lookup. You can also filter by edge type: *"find all symbols that **import** the logger package."*
+*   **"See what's in a file"**: Before editing a file, ask: *"Run `get_symbols_overview` on `internal/store/store.go`.*" This returns every top-level symbol sorted by line number — instantly orient yourself without reading the whole file. Use `include_private: false` to focus on the public API.
+*   **"Get exact location before editing"**: Before asking Claude to modify a function body, say: *"Run `symbol_coordinates` on `ProcessOrder` first."* Claude will know the exact file and lines to replace without reading the whole file.
 *   **"Check Impact"**: Before asking Claude to refactor, say: *"Run a Mimir impact analysis on the `AuthService` interface."* This prevents Claude from making breaking changes in distant parts of the repo.
 *   **"Trace the process"**: If a bug happens in a specific flow, say: *"Mimir, show me the full process trace starting from the `login` endpoint."*
+
+### Recommended Tool Order for Editing a Symbol
+
+```
+1. query()                → find candidate symbols
+2. find_referencing()     → who calls it? (decide scope of change)
+3. get_symbols_overview() → understand the file's public surface
+4. symbol_coordinates()   → get file_path + line range
+5. impact()               → blast radius if it's a public API
+6. make the edit          → agent replaces lines start_line–end_line
+```
 
 ## 5. Advanced: Raw Graph Queries (Cypher)
 For power users, Mimir supports a subset of Cypher. You can ask Claude: *"Run a Cypher query to find all exported functions in the 'internal/store' package that have no incoming call edges."*
