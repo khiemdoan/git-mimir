@@ -115,25 +115,67 @@ mimir analyze --hint <file> <path>       # Hint for faster patch planning
 
 ## MCP Tools
 
-AI agents get access to 7 tools via MCP:
+AI agents get access to 12 tools via MCP:
 
 | Tool | Description | Example |
 |---|---|---|
 | `query` | Hybrid search (BM25 + vector) | "Find all auth-related processes" |
 | `context` | 360-degree symbol view | "Show handleRequest definition and callers" |
+| `find_referencing` | Who directly calls/imports/extends a symbol (1-hop) | "What calls UserService.GetUser?" |
+| `symbol_coordinates` | Exact file path + line range for a symbol | "Where is ProcessOrder defined?" |
+| `get_symbols_overview` | All top-level symbols in a file, sorted by line | "What's exported from store.go?" |
 | `impact` | Blast radius analysis | "What breaks if I change UserService?" |
 | `detect_changes` | Analyze uncommitted git changes | "What processes did my commit affect?" |
 | `rename` | Plan coordinated multi-file rename | "Rename AuthController to SessionController" |
 | `cypher` | Raw graph queries | "Find unused exported functions" |
-| `list_repos` | List indexed repositories | — |
+| `list_repos` | List all registered repositories | — |
+| `query_repo` | Run a read-only tool against a different repo | "Query symbols in repo B from repo A" |
 
 ### Recommended Workflow
 
 1. **Discovery**: Use `query()` for semantic search
 2. **Deep Dive**: Use `context()` to understand a symbol
-3. **Before Editing**: Always run `impact()` first
+3. **Find callers**: Use `find_referencing()` for a lightweight 1-hop caller list
+4. **Understand a file**: Use `get_symbols_overview()` to see what's defined in a file
+5. **Before Editing**: Run `symbol_coordinates()` to get the exact location, then `impact()` for blast radius
+6. **Cross-repo**: Use `list_repos()` to discover repos, then `query_repo()` to query them
 
 For detailed usage, see [docs/guide.md](docs/guide.md).
+
+---
+
+## Testing MCP Tools Locally
+
+Use [MCP Inspector](https://github.com/modelcontextprotocol/inspector) — the official browser-based UI for exploring and calling MCP tools interactively:
+
+```bash
+# Build first
+make build
+
+# Index the current repo
+./bin/mimir analyze .
+
+# Launch MCP Inspector (requires Node.js)
+npx @modelcontextprotocol/inspector ./bin/mimir mcp
+```
+
+Then open **http://localhost:5173** in your browser. You can browse all 12 tools, fill in arguments via a form, and see the JSON responses in real time.
+
+Alternatively, test via raw stdin:
+
+```bash
+# List all tools
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | ./bin/mimir mcp
+
+# Call a tool
+echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_repos","arguments":{}}}' | ./bin/mimir mcp
+
+# Query a symbol in the current repo
+echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query","arguments":{"q":"handleRequest"}}}' | ./bin/mimir mcp
+
+# Cross-repo query: search for a symbol in a different repo
+echo '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"query_repo","arguments":{"tool_name":"query","arguments":{"query":"auth"},"target_repo":"other-project","current_repo":"git-mimir"}}}' | ./bin/mimir mcp
+```
 
 ---
 

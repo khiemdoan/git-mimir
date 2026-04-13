@@ -123,3 +123,52 @@ func WalkRepo(root string, concurrency int) <-chan FileInfo {
 
 	return out
 }
+
+// CollectFiles walks the repository synchronously and returns all discovered
+// files as a slice. The total count is known upfront, making it ideal for
+// driving progress bars. Uses the same gitignore and skip rules as WalkRepo.
+func CollectFiles(root string) ([]FileInfo, error) {
+	// Load .gitignore if present.
+	var gi *ignore.GitIgnore
+	gitignorePath := filepath.Join(root, ".gitignore")
+	if _, err := os.Stat(gitignorePath); err == nil {
+		gi, _ = ignore.CompileIgnoreFile(gitignorePath)
+	}
+
+	var files []FileInfo
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // skip unreadable entries
+		}
+		name := d.Name()
+		if d.IsDir() {
+			if skipDirs[name] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		// Apply gitignore.
+		rel, _ := filepath.Rel(root, path)
+		if gi != nil && gi.MatchesPath(rel) {
+			return nil
+		}
+		// Skip unwanted suffixes.
+		for _, suf := range skipSuffixes {
+			if strings.HasSuffix(name, suf) {
+				return nil
+			}
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		files = append(files, FileInfo{
+			Path:    path,
+			Ext:     filepath.Ext(name),
+			Size:    info.Size(),
+			ModTime: info.ModTime(),
+		})
+		return nil
+	})
+	return files, err
+}

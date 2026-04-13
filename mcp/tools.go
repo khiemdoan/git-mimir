@@ -1,9 +1,12 @@
 package mcp
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/thuongh2/git-mimir/internal/incremental"
@@ -66,6 +69,31 @@ func (t *Tools) ListTools() map[string]interface{} {
 				Description: "List all indexed repositories.",
 				InputSchema: schema(`{"type":"object","properties":{}}`),
 			},
+			{
+				Name:        "find_referencing",
+				Description: "Find all symbols that directly reference (call, import, extend, implement) a given symbol. Lighter than impact — returns 1-hop inbound edges only.",
+				InputSchema: schema(`{"type":"object","properties":{"name":{"type":"string"},"edge_types":{"type":"array","items":{"type":"string"},"description":"Filter by edge type. One of: CALLS, IMPORTS, EXTENDS, IMPLEMENTS, MEMBER_OF. Defaults to all."},"min_confidence":{"type":"number"},"repo":{"type":"string"}},"required":["name"]}`),
+			},
+			{
+				Name:        "symbol_coordinates",
+				Description: "Return the exact file path and line range for a symbol. Use before editing — gives the precise location to replace.",
+				InputSchema: schema(`{"type":"object","properties":{"name":{"type":"string"},"repo":{"type":"string"}},"required":["name"]}`),
+			},
+			{
+				Name:        "get_symbols_overview",
+				Description: "Gets an overview of all top-level symbols defined in a given file, sorted by line number. Excludes nested methods and members. Use to understand file structure before editing.",
+				InputSchema: schema(`{"type":"object","properties":{"file_path":{"type":"string"},"include_private":{"type":"boolean","description":"Include non-exported symbols. Defaults to true."},"repo":{"type":"string","description":"Name of the indexed repository to query. Required."}},"required":["file_path","repo"]}`),
+			},
+			{
+				Name:        "find_symbol_body",
+				Description: "Returns the exact source code body of a symbol (function, method, class) by name, including file_path, start_line, end_line, and the full implementation text. Use when you see a function name in logs or stack traces — fetches only the relevant lines instead of reading the whole file.",
+				InputSchema: schema(`{"type":"object","properties":{"name":{"type":"string","description":"Function, method, or class name to look up"},"repo":{"type":"string"}},"required":["name"]}`),
+			},
+			{
+				Name:        "query_repo",
+				Description: "Execute a whitelisted read-only tool against a different indexed repository. Pass tool_name, arguments, target_repo, and optional current_repo. Allowed tools: query, context, find_referencing, symbol_coordinates, get_symbols_overview, impact.",
+				InputSchema: schema(`{"type":"object","properties":{"tool_name":{"type":"string","description":"Tool to invoke on the target repo. One of: query, context, find_referencing, symbol_coordinates, get_symbols_overview, impact."},"arguments":{"type":"object","description":"Arguments to pass to the tool."},"target_repo":{"type":"string","description":"Name of the target repository to query."},"current_repo":{"type":"string","description":"Name of the current repository (optional, for context)."}},"required":["tool_name","arguments","target_repo"]}`),
+			},
 		},
 	}
 }
@@ -97,6 +125,16 @@ func (t *Tools) Call(ctx context.Context, params json.RawMessage) Response {
 		return t.rename(ctx, p.Arguments)
 	case "cypher":
 		return t.cypher(ctx, p.Arguments)
+	case "find_referencing":
+		return t.findReferencing(ctx, p.Arguments)
+	case "symbol_coordinates":
+		return t.symbolCoordinates(ctx, p.Arguments)
+	case "get_symbols_overview":
+		return t.getSymbolsOverview(ctx, p.Arguments)
+	case "query_repo":
+		return t.queryRepo(ctx, p.Arguments)
+	case "find_symbol_body":
+		return t.findSymbolBody(ctx, p.Arguments)
 	default:
 		return errResp(ErrMethodNotFound, "unknown tool: "+p.Name)
 	}
@@ -375,6 +413,364 @@ func (t *Tools) cypher(ctx context.Context, args json.RawMessage) Response {
 	})
 }
 
+func (t *Tools) findReferencing(ctx context.Context, args json.RawMessage) Response {
+	var input struct {
+		Name          string   `json:"name"`
+		EdgeTypes     []string `json:"edge_types"`
+		MinConfidence *float64 `json:"min_confidence"`
+		Repo          *string  `json:"repo"`
+	}
+	if err := json.Unmarshal(args, &input); err != nil {
+		return errResp(ErrInvalidParams, err.Error())
+	}
+
+	logDebug("findReferencing: name=%q edgeTypes=%v minConf=%v", input.Name, input.EdgeTypes, input.MinConfidence)
+
+	s, err := t.openStore(input.Repo)
+	if err != nil {
+		logError("findReferencing.openStore", err)
+		return errResp(ErrInternal, err.Error())
+	}
+	defer s.Close()
+
+	nodes, err := s.QuerySymbol(input.Name)
+	if err != nil {
+		logError("findReferencing.QuerySymbol", err)
+		return errResp(ErrInternal, err.Error())
+	}
+	if len(nodes) == 0 {
+		logDebug("findReferencing: symbol not found: %s", input.Name)
+		return toolResult(map[string]interface{}{"symbol": nil, "message": "symbol not found"})
+	}
+
+	target := nodes[0]
+
+	minConf := 0.0
+	if input.MinConfidence != nil {
+		minConf = *input.MinConfidence
+	}
+
+	// Build edge-type filter set.
+	edgeTypeSet := map[string]bool{}
+	for _, et := range input.EdgeTypes {
+		edgeTypeSet[strings.ToUpper(et)] = true
+	}
+
+	inEdges, err := s.QueryEdgesTo(target.UID)
+	if err != nil {
+		logError("findReferencing.QueryEdgesTo", err)
+		return errResp(ErrInternal, err.Error())
+	}
+
+	type refEntry struct {
+		Symbol     interface{} `json:"symbol"`
+		EdgeType   string      `json:"edge_type"`
+		Confidence float64     `json:"confidence"`
+	}
+
+	refs := make([]refEntry, 0, len(inEdges))
+	for _, e := range inEdges {
+		if len(edgeTypeSet) > 0 && !edgeTypeSet[e.Type] {
+			continue
+		}
+		if e.Confidence < minConf {
+			continue
+		}
+		caller, err := s.QueryNodeByUID(e.FromUID)
+		if err != nil || caller == nil {
+			continue
+		}
+		refs = append(refs, refEntry{
+			Symbol:     caller,
+			EdgeType:   e.Type,
+			Confidence: e.Confidence,
+		})
+	}
+
+	logDebug("findReferencing: %d references found for %s", len(refs), input.Name)
+	return toolResult(map[string]interface{}{
+		"target":     target.Name,
+		"total":      len(refs),
+		"references": refs,
+	})
+}
+
+func (t *Tools) symbolCoordinates(ctx context.Context, args json.RawMessage) Response {
+	var input struct {
+		Name string  `json:"name"`
+		Repo *string `json:"repo"`
+	}
+	if err := json.Unmarshal(args, &input); err != nil {
+		return errResp(ErrInvalidParams, err.Error())
+	}
+
+	logDebug("symbolCoordinates: name=%q repo=%v", input.Name, input.Repo)
+
+	s, err := t.openStore(input.Repo)
+	if err != nil {
+		logError("symbolCoordinates.openStore", err)
+		return errResp(ErrInternal, err.Error())
+	}
+	defer s.Close()
+
+	nodes, err := s.QuerySymbol(input.Name)
+	if err != nil {
+		logError("symbolCoordinates.QuerySymbol", err)
+		return errResp(ErrInternal, err.Error())
+	}
+	if len(nodes) == 0 {
+		logDebug("symbolCoordinates: symbol not found: %s", input.Name)
+		return toolResult(map[string]interface{}{"symbol": nil, "message": "symbol not found"})
+	}
+
+	results := make([]map[string]interface{}, 0, len(nodes))
+	for _, n := range nodes {
+		results = append(results, map[string]interface{}{
+			"name":         n.Name,
+			"kind":         n.Kind,
+			"file_path":    n.FilePath,
+			"start_line":   n.StartLine,
+			"end_line":     n.EndLine,
+			"package_path": n.PackagePath,
+			"exported":     n.Exported,
+		})
+	}
+
+	logDebug("symbolCoordinates: found %d locations for %s", len(results), input.Name)
+	return toolResult(map[string]interface{}{
+		"name":    input.Name,
+		"matches": results,
+	})
+}
+
+func (t *Tools) getSymbolsOverview(ctx context.Context, args json.RawMessage) Response {
+	var input struct {
+		FilePath       string  `json:"file_path"`
+		IncludePrivate *bool   `json:"include_private"`
+		Repo           *string `json:"repo"`
+	}
+	if err := json.Unmarshal(args, &input); err != nil {
+		return errResp(ErrInvalidParams, err.Error())
+	}
+
+	logDebug("getSymbolsOverview: file_path=%q repo=%v", input.FilePath, input.Repo)
+
+	s, err := t.openStore(input.Repo)
+	if err != nil {
+		logError("getSymbolsOverview.openStore", err)
+		return errResp(ErrInternal, err.Error())
+	}
+	defer s.Close()
+
+	// Nodes are stored with absolute paths. Normalize a relative input path
+	// using the repo root stored in index_meta so agents can pass relative paths.
+	filePath := input.FilePath
+	if !filepath.IsAbs(filePath) {
+		if repoRoot, err := s.GetMeta("repo_path"); err == nil && repoRoot != "" {
+			filePath = filepath.Join(repoRoot, filePath)
+		}
+	}
+
+	nodes, err := s.QueryTopLevelByFile(filePath)
+	if err != nil {
+		logError("getSymbolsOverview.QueryTopLevelByFile", err)
+		return errResp(ErrInternal, err.Error())
+	}
+
+	// By default include all symbols; filter private only when explicitly disabled.
+	includePrivate := true
+	if input.IncludePrivate != nil {
+		includePrivate = *input.IncludePrivate
+	}
+
+	results := make([]map[string]interface{}, 0, len(nodes))
+	for _, n := range nodes {
+		if !includePrivate && !n.Exported {
+			continue
+		}
+		results = append(results, map[string]interface{}{
+			"name":         n.Name,
+			"kind":         n.Kind,
+			"start_line":   n.StartLine,
+			"end_line":     n.EndLine,
+			"exported":     n.Exported,
+			"package_path": n.PackagePath,
+		})
+	}
+
+	logDebug("getSymbolsOverview: %d top-level symbols in %s", len(results), filePath)
+	return toolResult(map[string]interface{}{
+		"file_path": input.FilePath,
+		"total":     len(results),
+		"symbols":   results,
+	})
+}
+
+// queryRepoWhitelist contains tools safe to execute cross-repo.
+var queryRepoWhitelist = map[string]bool{
+	"query":                true,
+	"context":              true,
+	"find_referencing":     true,
+	"symbol_coordinates":   true,
+	"get_symbols_overview": true,
+	"impact":               true,
+}
+
+func (t *Tools) queryRepo(ctx context.Context, args json.RawMessage) Response {
+	var input struct {
+		ToolName    string          `json:"tool_name"`
+		Arguments   json.RawMessage `json:"arguments"`
+		TargetRepo  string          `json:"target_repo"`
+		CurrentRepo *string         `json:"current_repo"`
+	}
+	if err := json.Unmarshal(args, &input); err != nil {
+		return errResp(ErrInvalidParams, err.Error())
+	}
+	if !queryRepoWhitelist[input.ToolName] {
+		return errResp(ErrInvalidParams, fmt.Sprintf("tool %q is not allowed in query_repo; allowed: query, context, find_referencing, symbol_coordinates, get_symbols_overview, impact", input.ToolName))
+	}
+
+	// Inject target_repo into arguments.
+	var argMap map[string]interface{}
+	if len(input.Arguments) > 0 {
+		if err := json.Unmarshal(input.Arguments, &argMap); err != nil {
+			return errResp(ErrInvalidParams, "invalid arguments: "+err.Error())
+		}
+	} else {
+		argMap = map[string]interface{}{}
+	}
+	argMap["repo"] = input.TargetRepo
+	injectedArgs, _ := json.Marshal(argMap)
+
+	// Delegate to existing dispatcher via Call().
+	delegateParams, _ := json.Marshal(map[string]interface{}{
+		"name":      input.ToolName,
+		"arguments": json.RawMessage(injectedArgs),
+	})
+	resp := t.Call(ctx, delegateParams)
+	if resp.Error != nil {
+		return resp
+	}
+
+	// Attach meta inside the content text so the agent can read it.
+	currentRepo := ""
+	if input.CurrentRepo != nil {
+		currentRepo = *input.CurrentRepo
+	}
+	meta := map[string]interface{}{
+		"queried_repo": input.TargetRepo,
+		"current_repo": currentRepo,
+		"tool_used":    input.ToolName,
+	}
+	if resultMap, ok := resp.Result.(map[string]interface{}); ok {
+		if content, ok := resultMap["content"].([]map[string]interface{}); ok && len(content) > 0 {
+			if text, ok := content[0]["text"].(string); ok {
+				var innerData map[string]interface{}
+				if err := json.Unmarshal([]byte(text), &innerData); err == nil {
+					innerData["meta"] = meta
+					if b, err := json.Marshal(innerData); err == nil {
+						content[0]["text"] = string(b)
+					}
+				}
+			}
+		}
+	}
+	logDebug("queryRepo: tool=%s target=%s", input.ToolName, input.TargetRepo)
+	return resp
+}
+
+func (t *Tools) findSymbolBody(ctx context.Context, args json.RawMessage) Response {
+	var input struct {
+		Name string  `json:"name"`
+		Repo *string `json:"repo"`
+	}
+	if err := json.Unmarshal(args, &input); err != nil {
+		return errResp(ErrInvalidParams, err.Error())
+	}
+
+	logDebug("findSymbolBody: name=%q repo=%v", input.Name, input.Repo)
+
+	s, err := t.openStore(input.Repo)
+	if err != nil {
+		logError("findSymbolBody.openStore", err)
+		return errResp(ErrInternal, err.Error())
+	}
+	defer s.Close()
+
+	nodes, err := s.QuerySymbol(input.Name)
+	if err != nil {
+		logError("findSymbolBody.QuerySymbol", err)
+		return errResp(ErrInternal, err.Error())
+	}
+	if len(nodes) == 0 {
+		logDebug("findSymbolBody: symbol not found: %s", input.Name)
+		return toolResult(map[string]interface{}{"symbol": nil, "message": "symbol not found"})
+	}
+
+	type bodyResult struct {
+		Name        string `json:"name"`
+		Kind        string `json:"kind"`
+		FilePath    string `json:"file_path"`
+		StartLine   uint   `json:"start_line"`
+		EndLine     uint   `json:"end_line"`
+		PackagePath string `json:"package_path"`
+		Exported    bool   `json:"exported"`
+		Body        string `json:"body"`
+	}
+
+	results := make([]bodyResult, 0, len(nodes))
+	for _, n := range nodes {
+		body, readErr := readLines(n.FilePath, n.StartLine, n.EndLine)
+		if readErr != nil {
+			logDebug("findSymbolBody: read %s: %v", n.FilePath, readErr)
+			body = ""
+		}
+		results = append(results, bodyResult{
+			Name:        n.Name,
+			Kind:        n.Kind,
+			FilePath:    n.FilePath,
+			StartLine:   n.StartLine,
+			EndLine:     n.EndLine,
+			PackagePath: n.PackagePath,
+			Exported:    n.Exported,
+			Body:        body,
+		})
+	}
+
+	logDebug("findSymbolBody: %d matches for %s", len(results), input.Name)
+	return toolResult(map[string]interface{}{
+		"name":    input.Name,
+		"matches": results,
+	})
+}
+
+// readLines reads lines [start, end] (1-based, inclusive) from a file.
+func readLines(filePath string, start, end uint) (string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("open %s: %w", filePath, err)
+	}
+	defer f.Close()
+
+	var sb strings.Builder
+	scanner := bufio.NewScanner(f)
+	var lineNum uint = 1
+	for scanner.Scan() {
+		if lineNum >= start && lineNum <= end {
+			sb.WriteString(scanner.Text())
+			sb.WriteByte('\n')
+		}
+		if lineNum > end {
+			break
+		}
+		lineNum++
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("scan %s: %w", filePath, err)
+	}
+	return sb.String(), nil
+}
+
 // openStore opens the store for the given repo name.
 func (t *Tools) openStore(repoName *string) (*store.Store, error) {
 	name := t.resolveRepoName(repoName)
@@ -560,8 +956,8 @@ func translateEdgeWhereClause(where string) string {
 
 func translatePropRefs(s string) string {
 	replacements := map[string]string{
-		"filePath": "file_path",
-		"fileName": "file_path",
+		"filePath":  "file_path",
+		"fileName":  "file_path",
 		"startLine": "start_line",
 		"endLine":   "end_line",
 	}

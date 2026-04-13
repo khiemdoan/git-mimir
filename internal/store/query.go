@@ -86,6 +86,40 @@ func (s *Store) QueryByFile(filePath string) ([]graph.Node, error) {
 	return nodes, err
 }
 
+// QueryTopLevelByFile returns all top-level symbols in a file — excludes nested
+// methods and any symbol that is a target of a MEMBER_OF edge.
+// Matches by exact path OR by suffix (handles relative vs absolute path mismatches).
+func (s *Store) QueryTopLevelByFile(filePath string) ([]graph.Node, error) {
+	var nodes []graph.Node
+	err := s.Read(func(db *sql.DB) error {
+		rows, err := db.Query(`
+			SELECT uid, name, kind, file_path, start_line, end_line, exported, package_path, COALESCE(cluster_id,'')
+			FROM nodes
+			WHERE (file_path = ? OR file_path LIKE ('%/' || ?))
+			  AND kind != 'Method'
+			  AND NOT EXISTS (
+			    SELECT 1 FROM edges WHERE from_uid = uid AND type = 'MEMBER_OF'
+			  )
+			ORDER BY start_line`, filePath, filePath)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var n graph.Node
+			var exp int
+			if err := rows.Scan(&n.UID, &n.Name, &n.Kind, &n.FilePath,
+				&n.StartLine, &n.EndLine, &exp, &n.PackagePath, &n.ClusterID); err != nil {
+				return err
+			}
+			n.Exported = exp == 1
+			nodes = append(nodes, n)
+		}
+		return rows.Err()
+	})
+	return nodes, err
+}
+
 // QueryNodeByUID fetches a single node by UID.
 func (s *Store) QueryNodeByUID(uid string) (*graph.Node, error) {
 	var n graph.Node
